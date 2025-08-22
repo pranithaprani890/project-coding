@@ -1,3 +1,4 @@
+
 1. DemoApplication.java
 package com.example.demo;
 
@@ -193,6 +194,259 @@ import CheckNumber from "./CheckNumber";
 
 function App() {
   return <CheckNumber />;
+}
+
+export default App;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+1. application.properties
+spring.datasource.url=jdbc:postgresql://localhost:5432/locationsdb
+spring.datasource.username=postgres
+spring.datasource.password=yourpassword
+spring.jpa.hibernate.ddl-auto=update
+spring.jpa.show-sql=true
+spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.PostgreSQLDialect
+
+2. Location.java
+package com.example.demo.entity;
+
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+
+@Entity
+@Table(name = "locations")
+public class Location {
+
+    @Id
+    private Long pincode;   // Primary key
+    private String city;
+    private String area;
+
+    public Location() {}
+
+    public Location(Long pincode, String city, String area) {
+        this.pincode = pincode;
+        this.city = city;
+        this.area = area;
+    }
+
+    public Long getPincode() { return pincode; }
+    public void setPincode(Long pincode) { this.pincode = pincode; }
+
+    public String getCity() { return city; }
+    public void setCity(String city) { this.city = city; }
+
+    public String getArea() { return area; }
+    public void setArea(String area) { this.area = area; }
+}
+
+3. LocationRepository.java
+package com.example.demo.repository;
+
+import com.example.demo.entity.Location;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+
+@Repository
+public interface LocationRepository extends JpaRepository<Location, Long> {
+    List<Location> findByCityIgnoreCase(String city);
+}
+
+4. LocationService.java
+package com.example.demo.service;
+
+import com.example.demo.entity.Location;
+import com.example.demo.repository.LocationRepository;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+import java.util.Optional;
+
+@Service
+public class LocationService {
+
+    private final LocationRepository repo;
+
+    public LocationService(LocationRepository repo) {
+        this.repo = repo;
+    }
+
+    public Optional<Location> getLocationByPincode(Long pincode) {
+        return repo.findById(pincode);
+    }
+
+    public List<Location> getPincodesByCity(String city) {
+        return repo.findByCityIgnoreCase(city);
+    }
+}
+
+5. LocationController.java
+package com.example.demo.controller;
+
+import com.example.demo.entity.Location;
+import com.example.demo.service.LocationService;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/locations")
+@CrossOrigin(origins = "http://localhost:3000")
+public class LocationController {
+
+    private final LocationService service;
+
+    public LocationController(LocationService service) {
+        this.service = service;
+    }
+
+    // Get info about city, area, pincode by specifying pincode
+    @GetMapping("/pincode/{pincode}")
+    public ResponseEntity<?> getLocationByPincode(@PathVariable Long pincode) {
+        return service.getLocationByPincode(pincode)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    // Get all pincodes associated with a city
+    @GetMapping("/city/{city}")
+    public ResponseEntity<List<Location>> getPincodesByCity(@PathVariable String city) {
+        return ResponseEntity.ok(service.getPincodesByCity(city));
+    }
+}
+
+🟡 React Frontend
+Project Structure
+react-location/
+ └── src/
+     ├── services/locationService.js
+     ├── LocationSearch.js
+     ├── App.js
+     └── index.js
+
+1. locationService.js
+const API_URL = "http://localhost:8080/api/locations";
+
+export async function getLocationByPincode(pincode) {
+  const res = await fetch(`${API_URL}/pincode/${pincode}`);
+  if (!res.ok) throw new Error("Pincode not found");
+  return res.json();
+}
+
+export async function getPincodesByCity(city) {
+  const res = await fetch(`${API_URL}/city/${city}`);
+  if (!res.ok) throw new Error("City not found");
+  return res.json();
+}
+
+2. LocationSearch.js
+import React, { useState } from "react";
+import { getLocationByPincode, getPincodesByCity } from "./services/locationService";
+
+export default function LocationSearch() {
+  const [pincode, setPincode] = useState("");
+  const [city, setCity] = useState("");
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState("");
+
+  const searchByPincode = async () => {
+    try {
+      const data = await getLocationByPincode(pincode);
+      setResult(data);
+      setError("");
+    } catch (err) {
+      setError(err.message);
+      setResult(null);
+    }
+  };
+
+  const searchByCity = async () => {
+    try {
+      const data = await getPincodesByCity(city);
+      setResult(data);
+      setError("");
+    } catch (err) {
+      setError(err.message);
+      setResult(null);
+    }
+  };
+
+  return (
+    <div style={{ padding: "20px", fontFamily: "Arial" }}>
+      <h2>Location Search</h2>
+
+      <div>
+        <input
+          type="number"
+          placeholder="Enter Pincode"
+          value={pincode}
+          onChange={(e) => setPincode(e.target.value)}
+        />
+        <button onClick={searchByPincode}>Search by Pincode</button>
+      </div>
+
+      <div style={{ marginTop: "15px" }}>
+        <input
+          type="text"
+          placeholder="Enter City"
+          value={city}
+          onChange={(e) => setCity(e.target.value)}
+        />
+        <button onClick={searchByCity}>Search by City</button>
+      </div>
+
+      {error && <p style={{ color: "red" }}>{error}</p>}
+
+      {result && (
+        <pre style={{ marginTop: "20px", background: "#f4f4f4", padding: "10px" }}>
+          {JSON.stringify(result, null, 2)}
+        </pre>
+      )}
+    </div>
+  );
+}
+
+3. App.js
+import React from "react";
+import LocationSearch from "./LocationSearch";
+
+function App() {
+  return (
+    <div>
+      <LocationSearch />
+    </div>
+  );
 }
 
 export default App;
