@@ -478,3 +478,297 @@ export async function checkMultipleOfFive(num) {
     };
   }
 }
+
+CREATE TABLE locations (
+    pincode BIGINT PRIMARY KEY,
+    city VARCHAR(100) NOT NULL,
+    area VARCHAR(100) NOT NULL
+);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+react router:
+
+
+
+import axios from "axios";
+
+const API_URL = "http://localhost:8080/api/customers";
+
+class CustomerService {
+  getCustomers() {
+    return axios.get(API_URL);
+  }
+
+  getCustomerById(id) {
+    return axios.get(`${API_URL}/${id}`);
+  }
+
+  createCustomer(customer) {
+    return axios.post(API_URL, customer);
+  }
+
+  updateCustomer(id, customer) {
+    return axios.put(`${API_URL}/${id}`, customer);
+  }
+
+  deleteCustomer(id) {
+    return axios.delete(`${API_URL}/${id}`);
+  }
+}
+
+export default new CustomerService();
+🔹 2. components/Navbar.js
+javascript
+Copy
+Edit
+import React from "react";
+import { Link } from "react-router-dom";
+
+function Navbar() {
+  return (
+    <nav className="navbar navbar-dark bg-dark px-3">
+      <span className="navbar-brand">TopGuns Bank</span>
+      <div>
+        <Link to="/" className="nav-link d-inline text-white">Home</Link>
+        <Link to="/customers" className="nav-link d-inline text-white">Customers</Link>
+        <Link to="/about" className="nav-link d-inline text-white">About</Link>
+      </div>
+    </nav>
+  );
+}
+
+export default Navbar;
+🔹 3. components/CustomersList.js
+javascript
+Copy
+Edit
+import React, { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import CustomerService from "../services/CustomerService";
+
+function CustomersList() {
+  const [customers, setCustomers] = useState([]);
+
+  useEffect(() => {
+    CustomerService.getCustomers().then((res) => setCustomers(res.data));
+  }, []);
+
+  const deleteCustomer = (id) => {
+    if (window.confirm("Are you sure you want to delete this customer?")) {
+      CustomerService.deleteCustomer(id).then(() => {
+        setCustomers(customers.filter((c) => c.id !== id));
+      });
+    }
+  };
+
+  return (
+    <div className="container mt-3">
+      <h2>Customers List</h2>
+      <Link to="/customers/new" className="btn btn-primary mb-2">Create new customer</Link>
+      <table className="table table-bordered">
+        <thead>
+          <tr>
+            <th>Id</th><th>First Name</th><th>Last Name</th><th>Email</th><th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {customers.map((c) => (
+            <tr key={c.id}>
+              <td>{c.id}</td>
+              <td>{c.firstName}</td>
+              <td>{c.lastName}</td>
+              <td>{c.email}</td>
+              <td>
+                <Link to={`/customers/${c.id}`} className="btn btn-info btn-sm">Show</Link>{" "}
+                <Link to={`/customers/edit/${c.id}`} className="btn btn-warning btn-sm">Edit</Link>{" "}
+                <button onClick={() => deleteCustomer(c.id)} className="btn btn-danger btn-sm">Delete</button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export default CustomersList;
+🔹 4. components/CustomerForm.js
+javascript
+Copy
+Edit
+import React, { useState, useEffect } from "react";
+import { useNavigate, useParams, Link } from "react-router-dom";
+import CustomerService from "../services/CustomerService";
+
+function CustomerForm() {
+  const [customer, setCustomer] = useState({ firstName: "", lastName: "", email: "", phone: "" });
+  const { id } = useParams();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (id) {
+      CustomerService.getCustomerById(id).then((res) => setCustomer(res.data));
+    }
+  }, [id]);
+
+  const handleChange = (e) => {
+    setCustomer({ ...customer, [e.target.name]: e.target.value });
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (id) {
+      CustomerService.updateCustomer(id, customer).then(() => navigate("/customers"));
+    } else {
+      CustomerService.createCustomer(customer).then(() => navigate("/customers"));
+    }
+  };
+
+  return (
+    <div className="container mt-3">
+      <h2>{id ? "Edit Customer" : "Add Customer"}</h2>
+      <form onSubmit={handleSubmit}>
+        <input className="form-control mb-2" name="firstName" placeholder="First Name" value={customer.firstName} onChange={handleChange} required />
+        <input className="form-control mb-2" name="lastName" placeholder="Last Name" value={customer.lastName} onChange={handleChange} required />
+        <input className="form-control mb-2" name="email" type="email" placeholder="Email" value={customer.email} onChange={handleChange} required />
+        <input className="form-control mb-2" name="phone" placeholder="Phone" value={customer.phone} onChange={handleChange} />
+        <button type="submit" className="btn btn-success">{id ? "Update" : "Create"} Customer</button>
+        <Link to="/customers" className="btn btn-secondary ms-2">Cancel</Link>
+      </form>
+    </div>
+  );
+}
+
+export default CustomerForm;
+🔹 5. components/CustomerDetails.js
+javascript
+Copy
+Edit
+import React, { useEffect, useState } from "react";
+import { useParams, Link } from "react-router-dom";
+import CustomerService from "../services/CustomerService";
+
+function CustomerDetails() {
+  const { id } = useParams();
+  const [customer, setCustomer] = useState({});
+  const [accounts, setAccounts] = useState([]);
+
+  useEffect(() => {
+    CustomerService.getCustomerById(id).then((res) => {
+      setCustomer(res.data);
+      setAccounts(res.data.accounts || []);
+    });
+  }, [id]);
+
+  return (
+    <div className="container mt-3">
+      <Link to="/customers">Back to Customers List</Link>
+      <h2>Customer Details</h2>
+      <p><b>ID:</b> {customer.id}</p>
+      <p><b>First Name:</b> {customer.firstName}</p>
+      <p><b>Last Name:</b> {customer.lastName}</p>
+      <p><b>Email:</b> {customer.email}</p>
+      <p><b>Phone:</b> {customer.phone}</p>
+
+      <h3>List of Accounts</h3>
+      <table className="table table-bordered">
+        <thead>
+          <tr><th>Account No</th><th>Type</th><th>Branch</th><th>Balance</th></tr>
+        </thead>
+        <tbody>
+          {accounts.map((a, idx) => (
+            <tr key={idx}>
+              <td>{a.accountNo}</td>
+              <td>{a.type}</td>
+              <td>{a.branch}</td>
+              <td>{a.balance}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export default CustomerDetails;
+🔹 6. pages/Home.js
+javascript
+Copy
+Edit
+import React from "react";
+
+function Home() {
+  return (
+    <div className="container mt-3">
+      <h2>Welcome to TopGuns Bank</h2>
+      <p>This is a demo banking app where admins can manage customers and their accounts.</p>
+    </div>
+  );
+}
+
+export default Home;
+🔹 7. pages/About.js
+javascript
+Copy
+Edit
+import React from "react";
+
+function About() {
+  return (
+    <div className="container mt-3">
+      <h2>About</h2>
+      <p>TopGuns Bank is committed to providing reliable banking services. This app helps admins manage customer data.</p>
+    </div>
+  );
+}
+
+export default About;
+🔹 8. App.js
+javascript
+Copy
+Edit
+import React from "react";
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import Navbar from "./components/Navbar";
+import Home from "./pages/Home";
+import About from "./pages/About";
+import CustomersList from "./components/CustomersList";
+import CustomerForm from "./components/CustomerForm";
+import CustomerDetails from "./components/CustomerDetails";
+
+function App() {
+  return (
+    <Router>
+      <Navbar />
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/about" element={<About />} />
+        <Route path="/customers" element={<CustomersList />} />
+        <Route path="/customers/new" element={<CustomerForm />} />
+        <Route path="/customers/edit/:id" element={<CustomerForm />} />
+        <Route path="/customers/:id" element={<CustomerDetails />} />
+      </Routes>
+    </Router>
+  );
+}
+
+export default App;
