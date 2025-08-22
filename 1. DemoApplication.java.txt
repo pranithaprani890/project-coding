@@ -1,0 +1,103 @@
+1. DemoApplication.java
+package com.example.demo;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class DemoApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(DemoApplication.class, args);
+    }
+}
+
+2. NumberController.java
+package com.example.demo.controller;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping("/api/numbers")
+public class NumberController {
+
+    @GetMapping("/{num}")
+    public ResponseEntity<String> checkMultipleOfFive(@PathVariable int num) {
+        if (num % 5 == 0) {
+            return ResponseEntity
+                    .status(HttpStatus.OK)
+                    .body("Yes, " + num + " is a multiple of 5");
+        } else {
+            return ResponseEntity
+                    .status(HttpStatus.BAD_REQUEST)
+                    .body("No, " + num + " is not a multiple of 5");
+        }
+    }
+}
+
+
+✅ Run this with mvn spring-boot:run → server will start on http://localhost:8080.
+
+🟡 React Frontend
+
+Let’s make a simple component that lets the user enter a number, calls the API, and displays the result.
+
+CheckNumber.js
+import React, { useState } from "react";
+
+export default function CheckNumber() {
+  const [num, setNum] = useState("");
+  const [message, setMessage] = useState("");
+  const [status, setStatus] = useState(null);
+
+  const checkNumber = async () => {
+    if (!num) return;
+    try {
+      const response = await fetch(`http://localhost:8080/api/numbers/${num}`);
+      const text = await response.text();
+      setMessage(text);
+      setStatus(response.status);
+    } catch (err) {
+      setMessage("Error connecting to server");
+      setStatus(null);
+    }
+  };
+
+  return (
+    <div style={{ padding: "20px", fontFamily: "Arial" }}>
+      <h2>Check Multiple of 5</h2>
+      <input
+        type="number"
+        value={num}
+        onChange={(e) => setNum(e.target.value)}
+        placeholder="Enter a number"
+      />
+      <button onClick={checkNumber} style={{ marginLeft: "10px" }}>
+        Check
+      </button>
+      {message && (
+        <p style={{ marginTop: "15px", color: status === 200 ? "green" : "red" }}>
+          {message} (HTTP {status})
+        </p>
+      )}
+    </div>
+  );
+}
+
+Usage in React App
+
+In your App.js:
+
+import React from "react";
+import CheckNumber from "./CheckNumber";
+
+function App() {
+  return (
+    <div>
+      <CheckNumber />
+    </div>
+  );
+}
+
+export default App;
