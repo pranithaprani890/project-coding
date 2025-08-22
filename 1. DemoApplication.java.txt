@@ -450,3 +450,31 @@ function App() {
 }
 
 export default App;
+
+
+
+
+
+
+// src/services/numberService.js
+import axios from "axios";
+
+const API_URL = "http://localhost:8080/api/numbers";
+
+export async function checkMultipleOfFive(num) {
+  try {
+    const response = await axios.get(`${API_URL}/${num}`, {
+      responseType: "text", // ensures backend text response is handled correctly
+    });
+
+    return {
+      status: response.status,
+      message: response.data,
+    };
+  } catch (error) {
+    return {
+      status: error.response ? error.response.status : null,
+      message: error.response ? error.response.data : "Error connecting to server",
+    };
+  }
+}
