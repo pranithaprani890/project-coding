@@ -860,3 +860,13 @@ INSERT INTO locations (pincode, city, area) VALUES
 (400050, 'Mumbai', 'Bandra'),
 (600028, 'Chennai', 'Mylapore'),
 (600100, 'Chennai', 'Velachery');
+
+
+
+
+
+spring.jpa.hibernate.ddl-auto=none
+spring.jpa.show-sql=true
+
+spring.sql.init.mode=always
+spring.datasource.initialization-mode=always
