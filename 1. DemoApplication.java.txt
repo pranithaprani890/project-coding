@@ -845,3 +845,18 @@ root.render(
     <App />
   </BrowserRouter>
 );
+
+
+
+
+
+INSERT INTO locations (pincode, city, area) VALUES
+(560001, 'Bangalore', 'MG Road'),
+(560037, 'Bangalore', 'Marathahalli'),
+(500081, 'Hyderabad', 'HITEC City'),
+(500072, 'Hyderabad', 'Kukatpally'),
+(110001, 'New Delhi', 'Connaught Place'),
+(400001, 'Mumbai', 'Fort'),
+(400050, 'Mumbai', 'Bandra'),
+(600028, 'Chennai', 'Mylapore'),
+(600100, 'Chennai', 'Velachery');
