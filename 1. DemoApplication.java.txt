@@ -959,3 +959,201 @@ spring.sql.init.mode=always
 spring.datasource.initialization-mode=always
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+package task2.controller;
+
+import task2.entity.Location;
+import task2.service.LocationService;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/locations")
+@CrossOrigin(origins = "http://localhost:3000")
+public class LocationController {
+
+    private final LocationService service;
+
+    public LocationController(LocationService service) {
+        this.service = service;
+    }
+
+    // Get info about city, area, pincode by specifying pincode
+    @GetMapping("/pincode/{pincode}")
+    public ResponseEntity<?> getLocationByPincode(@PathVariable Long pincode) {
+        return service.getLocationByPincode(pincode)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    // Get all pincodes associated with a city
+    @GetMapping("/city/{city}")
+    public ResponseEntity<List<Location>> getPincodesByCity(@PathVariable String city) {
+        return ResponseEntity.ok(service.getPincodesByCity(city));
+    }
+}
+
+package task2.entity;
+
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+
+@Entity
+@Table(name = "locations")
+public class Location {
+
+    @Id
+    private Long pincode;   // Primary key
+    private String city;
+    private String area;
+
+    public Location() {}
+
+    public Location(Long pincode, String city, String area) {
+        this.pincode = pincode;
+        this.city = city;
+        this.area = area;
+    }
+
+    public Long getPincode() { return pincode; }
+    public void setPincode(Long pincode) { this.pincode = pincode; }
+
+    public String getCity() { return city; }
+    public void setCity(String city) { this.city = city; }
+
+    public String getArea() { return area; }
+    public void setArea(String area) { this.area = area; }
+}
+
+
+
+package task2.repository;
+
+import task2.entity.Location;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+
+@Repository
+public interface LocationRepository extends JpaRepository<Location, Long> {
+    List<Location> findByCityIgnoreCase(String city);
+}
+
+
+package task2.service;
+
+import task2.entity.Location;
+import task2.repository.LocationRepository;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+import java.util.Optional;
+
+@Service
+public class LocationService {
+
+    private final LocationRepository repo;
+
+    public LocationService(LocationRepository repo) {
+        this.repo = repo;
+    }
+
+    public Optional<Location> getLocationByPincode(Long pincode) {
+        return repo.findById(pincode);
+    }
+
+    public List<Location> getPincodesByCity(String city) {
+        return repo.findByCityIgnoreCase(city);
+    }
+}
+
+package task2;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class DemoApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(task.DemoApplication.class, args);
+    }
+}
+
+INSERT INTO locations (pincode, city, area) VALUES
+(560001, 'Bangalore', 'MG Road'),
+(560037, 'Bangalore', 'Marathahalli'),
+(500081, 'Hyderabad', 'HITEC City'),
+(500072, 'Hyderabad', 'Kukatpally'),
+(110001, 'New Delhi', 'Connaught Place'),
+(400001, 'Mumbai', 'Fort'),
+(400050, 'Mumbai', 'Bandra'),
+(600028, 'Chennai', 'Mylapore'),
+(600100, 'Chennai', 'Velachery');
+
+
+
+
+CREATE TABLE IF NOT EXISTS locations (
+    pincode BIGINT PRIMARY KEY,
+    city VARCHAR(100) NOT NULL,
+    area VARCHAR(100) NOT NULL
+);
+
+spring.datasource.url=jdbc:postgresql://localhost:5412/postgres
+spring.datasource.driverClassName=org.postgresql.Driver
+spring.datasource.username=postgres
+spring.datasource.password=
+
+spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.PostgreSQLDialect
+
+
+spring.sql.init.mode=never
+spring.jpa.hibernate.ddl-auto=update
+
+
+C:\Users\2031168\goldenversions\postgresql-13.3-2-windows-x64-binaries\pgsql>pg_ctl start
+pg_ctl: another server might be running; trying to start server anyway
+waiting for server to start....2025-08-24 18:21:36.423 IST [20840] LOG:  starting PostgreSQL 13.3, compiled by Visual C++ build 1914, 64-bit
+2025-08-24 18:21:36.427 IST [20840] LOG:  listening on IPv6 address "::1", port 5412
+2025-08-24 18:21:36.428 IST [20840] LOG:  listening on IPv4 address "127.0.0.1", port 5412
+2025-08-24 18:21:36.479 IST [15760] LOG:  database system was interrupted; last known up at 2025-08-22 17:46:05 IST
+2025-08-24 18:21:37.317 IST [15760] LOG:  database system was not properly shut down; automatic recovery in progress
+2025-08-24 18:21:37.321 IST [15760] LOG:  invalid record length at 0/164D2D8: wanted 24, got 0
+2025-08-24 18:21:37.322 IST [15760] LOG:  redo is not required
+2025-08-24 18:21:37.400 IST [20840] LOG:  database system is ready to accept connections
+
+
+{
+    "timestamp": "2025-08-24T13:41:49.633+00:00",
+    "status": 404,
+    "error": "Not Found",
+    "path": "/api/locations/city/Bangalore"
+}
