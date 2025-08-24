@@ -1,3 +1,28 @@
+spring.datasource.url=jdbc:postgresql://localhost:5412/postgres
+spring.datasource.driverClassName=org.postgresql.Driver
+spring.datasource.username=postgres
+spring.datasource.password=
+
+spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.PostgreSQLDialect
+
+
+spring.sql.init.mode=never
+spring.jpa.hibernate.ddl-auto=update
+
+{
+    "timestamp": "2025-08-24T13:32:57.754+00:00",
+    "status": 404,
+    "error": "Not Found",
+    "path": "/api/locations/city/Bangalore"
+}
+
+
+
+
+
+
+
+
 
 1. DemoApplication.java
 package com.example.demo;
@@ -870,3 +895,4 @@ spring.jpa.show-sql=true
 
 spring.sql.init.mode=always
 spring.datasource.initialization-mode=always
+
