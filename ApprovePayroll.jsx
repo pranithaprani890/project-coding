@@ -178,3 +178,30 @@ export default function ApprovePayroll() {
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+use case story 																	
+component																	
+Scneario ( do all the story telling you want)	service functionname	input argument and data type	return type and data type	how will you know failure and success, http status codes	if we are using models what the values indicate	database function	type of thing you want to do in database, insert, update, select (single select or multiselect)	request processing function URI	how is input taken (path variable, parameter, body)	what will be the reponse.. With details  with http status codes	validation	error handling scenario	security implications if any	which component of react will call this	what will the component  do with what the server will send	positive scenarios	negative scenarios
+
