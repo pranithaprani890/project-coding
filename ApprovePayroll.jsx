@@ -240,3 +240,276 @@ Scneario ( do all the story telling you want)	service functionname	input argumen
 | Negative Scenarios                       | Wrong passcode → Error message; Batch not found → 404; User not authorized → 403; DB error → 500.                                                                                                                                                                                                       |
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import React, { useState, useEffect } from "react";
+import BackToDashboard from "../../common/components/BackToDashboard";
+import { getAllBatches, setStatus, downloadText } from "../../common/storage/payrollStore";
+
+export default function ApprovePayroll() {
+  // State variables
+  const [batches, setBatches] = useState([]);
+  const [selected, setSelected] = useState([]);
+  const [remarks, setRemarks] = useState({});
+  const [showModal, setShowModal] = useState(false);
+  const [passcode, setPasscode] = useState("");
+  const [rejectReason, setRejectReason] = useState("");
+  const [message, setMessage] = useState("");
+  const [action, setAction] = useState("");
+  const [currentPage, setCurrentPage] = useState(1); // pagination state
+
+  const SECRET = "1234";
+  const rowsPerPage = 10; // 10 rows per page
+
+  useEffect(() => {
+    const all = getAllBatches();
+    setBatches(all.filter((b) => b.status === "Submitted"));
+  }, []);
+
+  const getTotal = (batch) =>
+    batch.payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+
+  const toggleSelect = (id) => {
+    setSelected((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
+  const openModal = (act) => {
+    if (selected.length === 0) {
+      setMessage("Please select at least one batch.");
+      return;
+    }
+    setAction(act);
+    setPasscode("");
+    setRejectReason("");
+    setMessage("");
+    setShowModal(true);
+  };
+
+  const confirmAction = () => {
+    if (passcode !== SECRET) {
+      setMessage("Wrong passcode!");
+      return;
+    }
+
+    if (action === "Rejected" && !rejectReason.trim()) {
+      setMessage("Please enter a rejection reason.");
+      return;
+    }
+
+    selected.forEach((id) => {
+      const meta = {
+        approvedBy: "Approver User",
+        approvedAt: new Date().toISOString(),
+        remarks: action === "Rejected" ? rejectReason : remarks[id] || "",
+      };
+      setStatus(id, action, meta);
+    });
+
+    const all = getAllBatches();
+    setBatches(all.filter((b) => b.status === "Submitted"));
+
+    setSelected([]);
+    setMessage(`Batches ${action}!`);
+    setShowModal(false);
+  };
+
+  const downloadBatch = (batch) => {
+    const text = [
+      `Payroll Batch — ${batch.id}`,
+      `Status: ${batch.status}`,
+      `Payments: ${batch.payments.length}`,
+      `Total: ${getTotal(batch)} ${batch.instruction.paymentCurrency}`,
+    ];
+    downloadText(`Batch_${batch.id}.txt`, text.join("\n"));
+  };
+
+  // Pagination logic
+  const indexOfLastRow = currentPage * rowsPerPage;
+  const indexOfFirstRow = indexOfLastRow - rowsPerPage;
+  const currentRows = batches.slice(indexOfFirstRow, indexOfLastRow);
+  const totalPages = Math.ceil(batches.length / rowsPerPage);
+
+  return (
+    <div className="container my-4">
+      <h2>Approve Payroll</h2>
+      <BackToDashboard />
+
+      {message && <div className="alert alert-info mt-2">{message}</div>}
+
+      {batches.length === 0 ? (
+        <p>No payrolls waiting for approval.</p>
+      ) : (
+        <>
+          <div className="mb-2 d-flex justify-content-end">
+            <button
+              className="btn btn-success me-2"
+              onClick={() => openModal("Approved")}
+            >
+              Approve Selected
+            </button>
+            <button
+              className="btn btn-danger"
+              onClick={() => openModal("Rejected")}
+            >
+              Reject Selected
+            </button>
+          </div>
+
+          {/* Scrollable Table with Sticky Header */}
+          <div style={{ maxHeight: "400px", overflowY: "auto" }}>
+            <table className="table table-bordered text-center">
+              <thead
+                style={{
+                  position: "sticky",
+                  top: 0,
+                  backgroundColor: "#f8f9fa",
+                  zIndex: 2,
+                }}
+              >
+                <tr>
+                  <th>Select</th>
+                  <th>ID</th>
+                  <th>Created</th>
+                  <th>Payments</th>
+                  <th>Total Amount</th>
+                  <th>Remarks</th>
+                  <th>Download</th>
+                </tr>
+              </thead>
+              <tbody>
+                {currentRows.map((b) => (
+                  <tr
+                    key={b.id}
+                    className={selected.includes(b.id) ? "table-active" : ""}
+                  >
+                    <td>
+                      <input
+                        type="checkbox"
+                        checked={selected.includes(b.id)}
+                        onChange={() => toggleSelect(b.id)}
+                      />
+                    </td>
+                    <td>{b.id}</td>
+                    <td>
+                      {b.createdAt
+                        ? new Date(b.createdAt).toLocaleString()
+                        : "-"}
+                    </td>
+                    <td>{b.payments.length}</td>
+                    <td>
+                      {getTotal(b)} {b.instruction.paymentCurrency}
+                    </td>
+                    <td>
+                      <input
+                        type="text"
+                        value={remarks[b.id] || ""}
+                        onChange={(e) =>
+                          setRemarks({ ...remarks, [b.id]: e.target.value })
+                        }
+                        className="form-control form-control-sm"
+                        placeholder="Remarks"
+                      />
+                    </td>
+                    <td>
+                      <button
+                        className="btn btn-outline-primary btn-sm"
+                        onClick={() => downloadBatch(b)}
+                      >
+                        Download
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination Controls */}
+          <div className="d-flex justify-content-center mt-3">
+            <button
+              className="btn btn-secondary me-2"
+              disabled={currentPage === 1}
+              onClick={() => setCurrentPage((p) => p - 1)}
+            >
+              Prev
+            </button>
+            <span className="align-self-center">
+              Page {currentPage} of {totalPages}
+            </span>
+            <button
+              className="btn btn-secondary ms-2"
+              disabled={currentPage === totalPages}
+              onClick={() => setCurrentPage((p) => p + 1)}
+            >
+              Next
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* Popup Modal */}
+      {showModal && (
+        <div className="modal show d-block">
+          <div className="modal-dialog">
+            <div className="modal-content p-3">
+              <h5>Enter Passcode</h5>
+              <input
+                type="password"
+                className="form-control my-2"
+                value={passcode}
+                onChange={(e) => setPasscode(e.target.value)}
+              />
+
+              {action === "Rejected" && (
+                <>
+                  <h6>Reason for Rejection</h6>
+                  <textarea
+                    className="form-control my-2"
+                    value={rejectReason}
+                    onChange={(e) => setRejectReason(e.target.value)}
+                  />
+                </>
+              )}
+
+              {message && <p className="text-danger">{message}</p>}
+
+              <div className="d-flex justify-content-end">
+                <button
+                  className="btn btn-secondary me-2"
+                  onClick={() => setShowModal(false)}
+                >
+                  Cancel
+                </button>
+                <button className="btn btn-primary" onClick={confirmAction}>
+                  Confirm
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
