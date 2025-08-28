@@ -2193,59 +2193,53 @@ export default function ManagePayroll() {
 
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { getAllBatches, setStatus, deleteBatch, downloadText } from "../../common/storage/payrollStore";
- 
+import { getAllBatches, setStatus, deleteBatch } from "../../common/storage/payrollStore";
+
 export default function ManagePayroll() {
   const [batches, setBatches] = useState([]);
   const [selectedBatch, setSelectedBatch] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 6; // fixed number of records per page
   const navigate = useNavigate();
- 
+
   useEffect(() => {
     setBatches(getAllBatches());
   }, []);
- 
+
   const refresh = () => setBatches(getAllBatches());
- 
+
   const editBatch = (batchId) => navigate("/payroll", { state: { batchId } });
- 
+
   const submitDraft = (batchId) => {
     setStatus(batchId, "Submitted", { updatedAt: new Date().toISOString() });
     refresh();
   };
- 
+
   const remove = (batchId) => {
     deleteBatch(batchId);
     refresh();
   };
- 
+
   const viewDetails = (batch) => setSelectedBatch(batch);
   const closeModal = () => setSelectedBatch(null);
- 
+
   const calculateTotalAmount = (batch) => {
     return batch.payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
   };
- 
+
   // Pagination logic
   const indexOfLast = currentPage * itemsPerPage;
   const indexOfFirst = indexOfLast - itemsPerPage;
   const currentBatches = batches.slice(indexOfFirst, indexOfLast);
   const totalPages = Math.ceil(batches.length / itemsPerPage);
- 
-  const goToPage = (page) => {
-    if (page > 0 && page <= totalPages) {
-      setCurrentPage(page);
-    }
-  };
- 
+
   return (
     <div className="container-fluid p-0" style={{ marginTop: "0px" }}>
       <div className="card" style={{ marginTop: "0px" }}>
         <div className="card-header text-center p-2">
           <h2 className="mb-0">Manage Payroll</h2>
         </div>
- 
+
         <div className="card-body p-2">
           <table className="table table-bordered text-center align-middle mb-0">
             <thead className="table-light">
@@ -2269,7 +2263,9 @@ export default function ManagePayroll() {
                 <tr key={b.id}>
                   <td>{indexOfFirst + idx + 1}</td>
                   <td>{b.id}</td>
-                  <td>{b.createdAt ? new Date(b.createdAt).toLocaleString() : "-"}</td>
+                  <td>
+                    {b.createdAt ? new Date(b.createdAt).toLocaleString() : "-"}
+                  </td>
                   <td>{b.payments.length}</td>
                   <td>
                     {calculateTotalAmount(b)} {b.instruction.paymentCurrency}
@@ -2324,50 +2320,32 @@ export default function ManagePayroll() {
               ))}
             </tbody>
           </table>
- 
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="d-flex justify-content-center mt-2">
-              <ul className="pagination pagination-sm mb-0">
-                <li className={`page-item ${currentPage === 1 ? "disabled" : ""}`}>
-                  <button
-                    className="page-link"
-                    onClick={() => goToPage(currentPage - 1)}
-                  >
-                    Previous
-                  </button>
-                </li>
-                {[...Array(totalPages)].map((_, i) => (
-                  <li
-                    key={i}
-                    className={`page-item ${currentPage === i + 1 ? "active" : ""}`}
-                  >
-                    <button
-                      className="page-link"
-                      onClick={() => goToPage(i + 1)}
-                    >
-                      {i + 1}
-                    </button>
-                  </li>
-                ))}
-                <li
-                  className={`page-item ${
-                    currentPage === totalPages ? "disabled" : ""
-                  }`}
-                >
-                  <button
-                    className="page-link"
-                    onClick={() => goToPage(currentPage + 1)}
-                  >
-                    Next
-                  </button>
-                </li>
-              </ul>
+
+          {/* Pagination - same as ApprovePayroll */}
+          {totalPages > 0 && (
+            <div className="d-flex justify-content-center mt-3">
+              <button
+                className="btn btn-secondary me-2"
+                disabled={currentPage === 1}
+                onClick={() => setCurrentPage((p) => p - 1)}
+              >
+                Prev
+              </button>
+              <span className="align-self-center">
+                Page {currentPage} of {totalPages}
+              </span>
+              <button
+                className="btn btn-secondary ms-2"
+                disabled={currentPage === totalPages}
+                onClick={() => setCurrentPage((p) => p + 1)}
+              >
+                Next
+              </button>
             </div>
           )}
         </div>
       </div>
- 
+
       {/* Modal for details */}
       {selectedBatch && (
         <div
@@ -2401,7 +2379,7 @@ export default function ManagePayroll() {
                     <strong>Date:</strong> {selectedBatch.instruction.date}
                   </li>
                 </ul>
- 
+
                 <h6>Payments</h6>
                 <table className="table table-sm table-bordered">
                   <thead>
