@@ -1,8 +1,6 @@
 
 import React, { useState } from "react";
-import PrimaryButton from "../../common/components/PrimaryButton";
-//import BackToDashboard from "../../common/components/BackToDashboard";
-import { upsertBatch } from "../../common/storage/payrollStore";
+import axios from "axios";
 
 export default function PayrollPayment() {
   const [instruction, setInstruction] = useState({
@@ -11,141 +9,111 @@ export default function PayrollPayment() {
     date: "",
   });
   const [payments, setPayments] = useState([
-    { payeeDetails: "", payeeName: "", accountNumber: "", reference: `REF-${Date.now()}`, amount: 0 },
+    { employeeId: "", employeeName: "", netPay: "" },
   ]);
-  const handleInstructionChange = (e) => {
-    const { name, value } = e.target;
-    setInstruction((prev) => ({ ...prev, [name]: value }));
-  };
-const handlePaymentChange = (index, e) => {
-  const { name, value } = e.target;
-  setPayments((prev) => {
-    const updated = [...prev];
 
-    if (name === "amount") {
-      const rawValue = value.replace(/[^0-9]/g, "");
-      updated[index][name] = rawValue; 
-    } else {
-      updated[index][name] = value; 
-    }
-    return updated;
-  });
-};
+  // Handle instruction change
+  const handleInstructionChange = (e) => {
+    setInstruction({ ...instruction, [e.target.name]: e.target.value });
+  };
+
+  // Handle payment change
+  const handlePaymentChange = (index, e) => {
+    const updatedPayments = [...payments];
+    updatedPayments[index][e.target.name] = e.target.value;
+    setPayments(updatedPayments);
+  };
+
+  // Add a new payment row
   const addPaymentRow = () => {
-    setPayments((prev) => [...prev, { payeeDetails: "", payeeName: "", accountNumber: "", reference: `REF-${Date.now()}`, amount: 0 }]);
+    setPayments([
+      ...payments,
+      { employeeId: "", employeeName: "", netPay: "" },
+    ]);
   };
-  const removePaymentRow = (index) => {
-    setPayments((prev) => prev.filter((_, i) => i !== index));
-  };
-  const saveBatch = (status) => {
-    upsertBatch({
-      id: Date.now(),
+
+  // Save batch (to backend instead of localStorage)
+  const saveBatch = async (status) => {
+    const batch = {
+      id: Date.now(), // simple unique ID
       instruction,
       payments,
       status,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-    });
-    window.location.href = "/manage-payroll";
+    };
+
+    try {
+      await axios.post("http://localhost:8080/api/payroll/batch", batch);
+      alert("Payroll batch saved successfully!");
+      window.location.href = "/manage-payroll"; // redirect after saving
+    } catch (error) {
+      console.error("Error saving payroll batch:", error);
+      alert("Failed to save payroll batch!");
+    }
   };
 
-  const totalAmount = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
-  const formatAmountInput = (amount)=>{if(!amount) return"";if(instruction.paymentCurrency==="INR") {return Number(amount).toLocaleString("en-IN");}
-  if (instruction.paymentCurrency==="USD"){
-    return Number(amount).toLocaleString("en-US");
-  }
-  return Number(amount).toLocaleString();
-};
   return (
-    
-    <div className="container p-1">
-      <div className="card p-2">
-        <h2 className="text-center mb-3">Create Payroll Payments</h2>
+    <div>
+      <h2>Create Payroll Batch</h2>
 
-        <form onSubmit={(e) => { e.preventDefault(); saveBatch("Submitted"); }}>
-          {/* Instruction Details */}
-          <h4>Instruction Details</h4>
-          <div className="row mb-3">
-            <div className="col">
-              <label>Debit Account *</label>
-              <select name="debitAccount" value={instruction.debitAccount} onChange={handleInstructionChange} className="form-select" required>
-                <option value="">Select Debit Account</option>
-                <option value="Corporate INR">Corporate INR</option>
-                <option value="Corporate USD">Corporate USD</option>
-              </select>
-            </div>
+      {/* Instruction Section */}
+      <h3>Instruction</h3>
+      <input
+        type="text"
+        name="paymentCurrency"
+        placeholder="Payment Currency"
+        value={instruction.paymentCurrency}
+        onChange={handleInstructionChange}
+      />
+      <input
+        type="text"
+        name="debitAccount"
+        placeholder="Debit Account"
+        value={instruction.debitAccount}
+        onChange={handleInstructionChange}
+      />
+      <input
+        type="date"
+        name="date"
+        value={instruction.date}
+        onChange={handleInstructionChange}
+      />
 
-            <div className="col">
-              <label>Currency *</label>
-              <select name="paymentCurrency" value={instruction.paymentCurrency} onChange={handleInstructionChange} className="form-select" required>
-                <option value="">Select Currency</option>
-                 <option value="INR"> INR</option>
-                <option value="USD"> USD</option>
-              </select>
-            </div>
+      {/* Payments Section */}
+      <h3>Payments</h3>
+      {payments.map((payment, index) => (
+        <div key={index}>
+          <input
+            type="text"
+            name="employeeId"
+            placeholder="Employee ID"
+            value={payment.employeeId}
+            onChange={(e) => handlePaymentChange(index, e)}
+          />
+          <input
+            type="text"
+            name="employeeName"
+            placeholder="Employee Name"
+            value={payment.employeeName}
+            onChange={(e) => handlePaymentChange(index, e)}
+          />
+          <input
+            type="number"
+            name="netPay"
+            placeholder="Net Pay"
+            value={payment.netPay}
+            onChange={(e) => handlePaymentChange(index, e)}
+          />
+        </div>
+      ))}
+      <button onClick={addPaymentRow}>+ Add Payment</button>
 
-            <div className="col">
-              <label>Date *</label>
-              <input type="date" name="date" value={instruction.date} onChange={handleInstructionChange} className="form-control" required />
-            </div>
-          </div>
-           <h4 className="d-flex justify-content-between">
-  <span>Payment Details</span>
-</h4>
-          <div style={{ maxHeight: "300px", overflowY: "auto", border: "1px solid #ccc", borderRadius: "5px" }}>
-            <table className="table table-bordered text-center mb-0">
-              <thead className="table-light" style={{ position: "sticky", top: 0,zIndex:10}}>
-                <tr>
-                  <th>S. No.</th>
-                  <th>Reference</th>
-                  <th>Payee Role *</th>
-                  <th>Payee Name *</th>
-                  <th>Account Number *</th>
-                  <th>Amount *</th>
-                  <th>Action </th>
-                </tr>
-              </thead>
-              <tbody>
-                {payments.map((p, i) => (
-                  <tr key={i}>
-                    <td>{i + 1}</td>
-                    <td><input className="form-control form-control-sm" name="reference" value={p.reference} readOnly /></td>
-                    <td><input className="form-control form-control-sm" name="payeeDetails" value={p.payeeDetails} onChange={(e) => handlePaymentChange(i, e)} required /></td>
-                    <td><input className="form-control form-control-sm" name="payeeName" value={p.payeeName} onChange={(e) => handlePaymentChange(i, e)} required /></td>
-                    <td><input className="form-control form-control-sm" name="accountNumber" value={p.accountNumber} onChange={(e) => handlePaymentChange(i, e)} required /></td>
-                    <td><input className="form-control form-control-sm text-end" type="text" name="amount" value={formatAmountInput(p.amount )} onChange={(e) => handlePaymentChange(i, e)} required /></td>
-                    <td><button type="button" className="btn btn-sm btn-danger" onClick={() => removePaymentRow(i)}>Remove</button></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            </div>
-            <div style={{
-              position:"sticky",
-              bottom:0,
-              background:"#0055a4",
-              color:"white",
-              borderTop:"1px solid #444",
-              padding:"8px 12px",
-              fontsize:"0.95rem",
-              textAlign:"right",
-              zIndex:10
-
-            }}>
-            <strong>Total Amount:    {formatAmountInput(totalAmount)}</strong>
-          </div>
-          <div className="d-flex justify-content-between align-items-center my-2">
-          <button type="button" className="btn btn-outline-secondary my-2" onClick={addPaymentRow}>+ Add Payment Row</button>
-
-          
-            <div className="d-flex  gap-2 ">
-              <button type="button" className="btn btn-outline-secondary" onClick={() => saveBatch("Draft")}>Save as Draft</button>
-              <PrimaryButton type="submit">Submit</PrimaryButton>
-            </div>
-          </div>
-        </form>
-      </div>
-     </div>
+      {/* Action Buttons */}
+      <br />
+      <button onClick={() => saveBatch("Draft")}>Save as Draft</button>
+      <button onClick={() => saveBatch("Submitted")}>Submit</button>
+    </div>
   );
 }
 
@@ -2721,5 +2689,6 @@ export default function ManagePayroll() {
     </div>
   );
 }
+
 
 
