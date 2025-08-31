@@ -1,7 +1,152 @@
+package com.example.approval.model;
+
+import jakarta.persistence.*;
+import java.time.LocalDateTime;
+
+@Entity
+@Table(name = "approval_logs")
+public class ApprovalLog {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    private Long batchId;
+    private String status;    // Approved/Rejected
+    private String remarks;
+    private String approvedBy;
+    private String approvedAt;
+
+    // getters & setters omitted for brevity
+}
+Line-by-line / block explanation
+
+package ... — declares package (keeps approval code separate).
+
+@Entity — JPA will map this class to a DB table.
+
+@Table(name = "approval_logs") — explicit table name.
+
+@Id + @GeneratedValue(...) — primary key, auto-increment.
+
+private Long batchId; — stores which payroll_batches.id this log belongs to.
+
+private String status; — Approved or Rejected.
+
+private String remarks; — approver notes or reject reason.
+
+private String approvedBy; — who took the action.
+
+private String approvedAt; — timestamp (stored as string for simplicity to match other models).
+
+Provide standard getters & setters (Jackson/JPA need them).
+
+approval/repo/ApprovalLogRepository.java
+java
+Copy code
+package com.example.approval.repo;
+
+import com.example.approval.model.ApprovalLog;
+import org.springframework.data.jpa.repository.JpaRepository;
+import java.util.List;
+
+public interface ApprovalLogRepository extends JpaRepository<ApprovalLog, Long> {
+    List<ApprovalLog> findByBatchIdOrderByApprovedAtDesc(Long batchId);
+}
+Explanation
+
+Extends JpaRepository giving you save(), findAll(), etc.
+
+findByBatchIdOrderByApprovedAtDesc — convenience method to fetch history for a batch.
+
+approval/service/ApprovalService.java
+java
+Copy code
+package com.example.approval.service;
+
+import com.example.approval.model.ApprovalLog;
+import com.example.approval.repo.ApprovalLogRepository;
+import com.example.payroll.model.PayrollBatch;
+import com.example.payroll.repository.PayrollBatchRepository;
+import org.springframework.stereotype.Service;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+
+@Service
+public class ApprovalService {
+    private final PayrollBatchRepository batchRepo;
+    private final ApprovalLogRepository logRepo;
+
+    public ApprovalService(PayrollBatchRepository batchRepo, ApprovalLogRepository logRepo) {
+        this.batchRepo = batchRepo;
+        this.logRepo = logRepo;
+    }
+
+    public PayrollBatch updateStatus(Long batchId, String status, String remarks, String approvedBy) {
+        PayrollBatch batch = batchRepo.findById(batchId)
+            .orElseThrow(() -> new RuntimeException("Batch not found: " + batchId));
+
+        // update batch status & timestamp
+        batch.setStatus(status);
+        batch.setUpdatedAt(LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+        batchRepo.save(batch);      // persist change to payroll_batches
+
+        // record an approval log
+        ApprovalLog log = new ApprovalLog();
+        log.setBatchId(batchId);
+        log.setStatus(status);
+        log.setRemarks(remarks);
+        log.setApprovedBy(approvedBy);
+        log.setApprovedAt(LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+        logRepo.save(log);
+
+        return batch;
+    }
+}
+Explanation (key lines)
+
+Constructor injection: PayrollBatchRepository (from teammate) + ApprovalLogRepository (your repo).
+
+batchRepo.findById(...).orElseThrow(...) — fetch batch; fail fast if not found.
+
+batch.setStatus(status) + batch.setUpdatedAt(...) — update the existing entity.
+
+batchRepo.save(batch) — persist status change to payroll_batches.
+
+Build ApprovalLog, set fields, logRepo.save(log) — store history.
+
+Return the updated PayrollBatch so controller can return it to frontend.
+
+Why separate log? keeps approval metadata without modifying teammate’s model, and gives audit history.
+
+approval/controller/ApprovalController.java
+java
+Copy code
+package com.example.approval.controller;
+
+import com.example.payroll.model.PayrollBatch;
+import com.example.approval.service.ApprovalService;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping("/api/approval")
+@CrossOrigin(origins = "http://localhost:3000")
+public class ApprovalController {
+    private final ApprovalService service;
+
+    public ApprovalController(ApprovalService service) { this.service = service; }
+
+    @PutMapping("/batch/{id}/status")
+    public PayrollBatch updateBatchStatus(
+            @PathVariable Long id,
+            @RequestBody ApprovalRequestDto dto // or Map<String,String>
+    ) {
+        return service.updateStatus(id, dto.getStatus(), dto.getRemarks(), dto.getApprovedBy());
+    }
+}
 
 
 
-
+-------------------------
 import React, { useState } from "react";
 import axios from "axios";
 import PrimaryButton from "../../common/components/PrimaryButton";
@@ -2988,6 +3133,7 @@ export default function ManagePayroll() {
     </div>
   );
 }
+
 
 
 
