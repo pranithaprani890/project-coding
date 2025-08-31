@@ -1,3 +1,155 @@
+1. Add ApprovalLog.java
+package com.example.approval.model;
+
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "approval_logs")
+public class ApprovalLog {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    private Long batchId;
+    private String status; // Approved / Rejected
+    private String remarks;
+    private String approvedBy;
+    private String approvedAt;
+
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
+
+    public Long getBatchId() { return batchId; }
+    public void setBatchId(Long batchId) { this.batchId = batchId; }
+
+    public String getStatus() { return status; }
+    public void setStatus(String status) { this.status = status; }
+
+    public String getRemarks() { return remarks; }
+    public void setRemarks(String remarks) { this.remarks = remarks; }
+
+    public String getApprovedBy() { return approvedBy; }
+    public void setApprovedBy(String approvedBy) { this.approvedBy = approvedBy; }
+
+    public String getApprovedAt() { return approvedAt; }
+    public void setApprovedAt(String approvedAt) { this.approvedAt = approvedAt; }
+}
+
+2. Repository for logs
+package com.example.approval.repo;
+
+import com.example.approval.model.ApprovalLog;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+@Repository
+public interface ApprovalLogRepository extends JpaRepository<ApprovalLog, Long> {
+}
+
+3. Service layer
+package com.example.approval.service;
+
+import com.example.approval.model.ApprovalLog;
+import com.example.approval.repo.ApprovalLogRepository;
+import com.example.payroll.model.PayrollBatch;
+import com.example.payroll.repository.PayrollBatchRepository;
+import org.springframework.stereotype.Service;
+
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+
+@Service
+public class ApprovalService {
+    private final PayrollBatchRepository batchRepo;
+    private final ApprovalLogRepository logRepo;
+
+    public ApprovalService(PayrollBatchRepository batchRepo, ApprovalLogRepository logRepo) {
+        this.batchRepo = batchRepo;
+        this.logRepo = logRepo;
+    }
+
+    public PayrollBatch updateStatus(Long batchId, String status, String remarks, String approvedBy) {
+        PayrollBatch batch = batchRepo.findById(batchId)
+                .orElseThrow(() -> new RuntimeException("Batch not found"));
+
+        batch.setStatus(status);
+        batch.setUpdatedAt(LocalDateTime.now().toString());
+        batchRepo.save(batch);
+
+        ApprovalLog log = new ApprovalLog();
+        log.setBatchId(batchId);
+        log.setStatus(status);
+        log.setRemarks(remarks);
+        log.setApprovedBy(approvedBy);
+        log.setApprovedAt(LocalDateTime.now().format(DateTimeFormatter.ISO_DATE_TIME));
+        logRepo.save(log);
+
+        return batch;
+    }
+}
+
+4. Controller for approval
+package com.example.approval.controller;
+
+import com.example.approval.service.ApprovalService;
+import com.example.payroll.model.PayrollBatch;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.Map;
+
+@RestController
+@RequestMapping("/api/approval")
+@CrossOrigin(origins = "http://localhost:3000") // React frontend
+public class ApprovalController {
+    private final ApprovalService approvalService;
+
+    public ApprovalController(ApprovalService approvalService) {
+        this.approvalService = approvalService;
+    }
+
+    @PutMapping("/batch/{id}/status")
+    public PayrollBatch updateBatchStatus(
+            @PathVariable Long id,
+            @RequestBody Map<String, String> request
+    ) {
+        String status = request.get("status");     // "Approved" / "Rejected"
+        String remarks = request.get("remarks");   // optional
+        String approvedBy = request.getOrDefault("approvedBy", "System User");
+
+        return approvalService.updateStatus(id, status, remarks, approvedBy);
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+-------------------------------
 package com.example.approval.model;
 
 import jakarta.persistence.*;
@@ -3133,6 +3285,7 @@ export default function ManagePayroll() {
     </div>
   );
 }
+
 
 
 
