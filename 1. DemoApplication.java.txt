@@ -1,3 +1,160 @@
+package com.example.approval.model;
+
+import jakarta.persistence.*;
+import java.time.LocalDateTime;
+
+@Entity
+@Table(name = "approval_logs")
+public class ApprovalLog {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    private Long batchId;
+    private String action;        // "Approved" or "Rejected"
+    private String remarks;
+    private String approvedBy;
+    private LocalDateTime approvedAt;
+
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
+
+    public Long getBatchId() { return batchId; }
+    public void setBatchId(Long batchId) { this.batchId = batchId; }
+
+    public String getAction() { return action; }
+    public void setAction(String action) { this.action = action; }
+
+    public String getRemarks() { return remarks; }
+    public void setRemarks(String remarks) { this.remarks = remarks; }
+
+    public String getApprovedBy() { return approvedBy; }
+    public void setApprovedBy(String approvedBy) { this.approvedBy = approvedBy; }
+
+    public LocalDateTime getApprovedAt() { return approvedAt; }
+    public void setApprovedAt(LocalDateTime approvedAt) { this.approvedAt = approvedAt; }
+}
+2. ApprovalLogRepository.java
+java
+Copy code
+package com.example.approval.repo;
+
+import com.example.approval.model.ApprovalLog;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+@Repository
+public interface ApprovalLogRepository extends JpaRepository<ApprovalLog, Long> {
+}
+3. ApprovalService.java
+java
+Copy code
+package com.example.approval.service;
+
+import com.example.approval.model.ApprovalLog;
+import com.example.approval.repo.ApprovalLogRepository;
+import com.example.payroll.model.PayrollBatch;
+import com.example.payroll.repository.PayrollBatchRepository;
+import org.springframework.stereotype.Service;
+
+import java.time.LocalDateTime;
+import java.util.List;
+
+@Service
+public class ApprovalService {
+
+    private final PayrollBatchRepository batchRepo;
+    private final ApprovalLogRepository logRepo;
+
+    public ApprovalService(PayrollBatchRepository batchRepo, ApprovalLogRepository logRepo) {
+        this.batchRepo = batchRepo;
+        this.logRepo = logRepo;
+    }
+
+    public PayrollBatch updateStatus(Long batchId, String status, String remarks, String approver) {
+        PayrollBatch batch = batchRepo.findById(batchId).orElseThrow(() -> new RuntimeException("Batch not found"));
+        batch.setStatus(status);
+        batch.setUpdatedAt(LocalDateTime.now().toString());
+        batchRepo.save(batch);
+
+        ApprovalLog log = new ApprovalLog();
+        log.setBatchId(batchId);
+        log.setAction(status);
+        log.setRemarks(remarks);
+        log.setApprovedBy(approver);
+        log.setApprovedAt(LocalDateTime.now());
+        logRepo.save(log);
+
+        return batch;
+    }
+
+    public List<ApprovalLog> getLogs() {
+        return logRepo.findAll();
+    }
+}
+4. ApprovalController.java
+java
+Copy code
+package com.example.approval.controller;
+
+import com.example.approval.model.ApprovalLog;
+import com.example.approval.service.ApprovalService;
+import com.example.payroll.model.PayrollBatch;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+import java.util.Map;
+
+@RestController
+@RequestMapping("/api/approval")
+@CrossOrigin(origins = "http://localhost:3000")
+public class ApprovalController {
+
+    private final ApprovalService service;
+
+    public ApprovalController(ApprovalService service) {
+        this.service = service;
+    }
+
+    // Approve/Reject a batch
+    @PutMapping("/batch/{id}")
+    public PayrollBatch updateBatchStatus(@PathVariable Long id, @RequestBody Map<String, String> body) {
+        String status = body.get("status");   // "Approved" or "Rejected"
+        String remarks = body.getOrDefault("remarks", "");
+        String approvedBy = body.getOrDefault("approvedBy", "System User");
+        return service.updateStatus(id, status, remarks, approvedBy);
+    }
+
+    // View logs
+    @GetMapping("/logs")
+    public List<ApprovalLog> getLogs() {
+        return service.getLogs();
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+-------------------
 1. Add ApprovalLog.java
 package com.example.approval.model;
 
@@ -3285,6 +3442,7 @@ export default function ManagePayroll() {
     </div>
   );
 }
+
 
 
 
