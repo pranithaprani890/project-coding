@@ -1,4 +1,277 @@
-updated approval code
+import React, { useState, useEffect } from "react";
+import axios from "axios";
+
+export default function ApprovePayroll() {
+  // State variables
+  const [batches, setBatches] = useState([]);
+  const [selected, setSelected] = useState([]);
+  const [remarks, setRemarks] = useState({});
+  const [showModal, setShowModal] = useState(false);
+  const [passcode, setPasscode] = useState("");
+  const [rejectReason, setRejectReason] = useState("");
+  const [message, setMessage] = useState("");
+  const [action, setAction] = useState("");
+  const [currentPage, setCurrentPage] = useState(1); // pagination state
+
+  const SECRET = "1234";
+  const rowsPerPage = 10; // 10 rows per page
+  const API_BASE = "http://localhost:8080/api/payroll"; // ✅ backend URL
+
+  // ✅ Fetch batches from backend
+  const fetchBatches = async () => {
+    try {
+      const res = await axios.get(`${API_BASE}/batches`);
+      setBatches(res.data); // backend already filters submitted
+    } catch (err) {
+      console.error("Error fetching batches:", err);
+      setMessage("Failed to load batches.");
+    }
+  };
+
+  useEffect(() => {
+    fetchBatches();
+  }, []);
+
+  const getTotal = (batch) =>
+    batch.payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+
+  const toggleSelect = (id) => {
+    setSelected((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
+  const openModal = (act) => {
+    if (selected.length === 0) {
+      setMessage("Please select at least one batch.");
+      return;
+    }
+    setAction(act);
+    setPasscode("");
+    setRejectReason("");
+    setMessage("");
+    setShowModal(true);
+  };
+
+  // ✅ Approve/Reject using backend
+  const confirmAction = async () => {
+    if (passcode !== SECRET) {
+      setMessage("Wrong passcode!");
+      return;
+    }
+
+    if (action === "Rejected" && !rejectReason.trim()) {
+      setMessage("Please enter a rejection reason.");
+      return;
+    }
+
+    try {
+      for (let id of selected) {
+        await axios.put(`${API_BASE}/batches/${id}/status`, {
+          status: action,
+          meta: {
+            approvedBy: "Approver User",
+            remarks: action === "Rejected" ? rejectReason : remarks[id] || "",
+          },
+        });
+      }
+
+      await fetchBatches(); // refresh table
+      setSelected([]);
+      setMessage(`Batches ${action}!`);
+      setShowModal(false);
+    } catch (err) {
+      console.error("Error updating status:", err);
+      setMessage("Failed to update batch status.");
+    }
+  };
+
+  // Pagination logic
+  const indexOfLastRow = currentPage * rowsPerPage;
+  const indexOfFirstRow = indexOfLastRow - rowsPerPage;
+  const currentRows = batches.slice(indexOfFirstRow, indexOfLastRow);
+  const totalPages = Math.ceil(batches.length / rowsPerPage);
+
+  return (
+    <div className="container my-4">
+      {/* Heading + Back button on same line */}
+      <div className="d-flex justify-content-between align-items-center mb-3">
+        <h2 className="mb-0">Approve Payroll</h2>
+        <button
+          className="btn btn-primary"
+          onClick={() => (window.location.href = "/dashboard")}
+        >
+          ← Back to Dashboard
+        </button>
+      </div>
+
+      {message && <div className="alert alert-info">{message}</div>}
+
+      {batches.length === 0 ? (
+        <p>No payrolls waiting for approval.</p>
+      ) : (
+        <>
+          {/* Approve/Reject buttons */}
+          <div className="mb-2 d-flex justify-content-end">
+            <button
+              className="btn btn-success me-2"
+              onClick={() => openModal("Approved")}
+            >
+              Approve Selected
+            </button>
+            <button
+              className="btn btn-danger"
+              onClick={() => openModal("Rejected")}
+            >
+              Reject Selected
+            </button>
+          </div>
+
+          {/* Scrollable Table with Sticky Header */}
+          <div style={{ maxHeight: "400px", overflowY: "auto" }}>
+            <table className="table table-bordered text-center mb-0">
+              <thead
+                style={{
+                  position: "sticky",
+                  top: 0,
+                  backgroundColor: "#f8f9fa",
+                  zIndex: 2,
+                }}
+              >
+                <tr>
+                  <th>Select</th>
+                  <th>ID</th>
+                  <th>Created</th>
+                  <th>Payments</th>
+                  <th>Total Amount</th>
+                  <th>Remarks</th>
+                </tr>
+              </thead>
+              <tbody>
+                {currentRows.map((b) => (
+                  <tr
+                    key={b.id}
+                    className={selected.includes(b.id) ? "table-active" : ""}
+                  >
+                    <td>
+                      <input
+                        type="checkbox"
+                        checked={selected.includes(b.id)}
+                        onChange={() => toggleSelect(b.id)}
+                      />
+                    </td>
+                    <td>{b.id}</td>
+                    <td>
+                      {b.createdAt
+                        ? new Date(b.createdAt).toLocaleString()
+                        : "-"}
+                    </td>
+                    <td>{b.payments.length}</td>
+                    <td>
+                      {getTotal(b)} {b.instruction.paymentCurrency}
+                    </td>
+                    <td>
+                      <input
+                        type="text"
+                        value={remarks[b.id] || ""}
+                        onChange={(e) =>
+                          setRemarks({ ...remarks, [b.id]: e.target.value })
+                        }
+                        className="form-control form-control-sm"
+                        placeholder="Remarks"
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination Controls */}
+          <div className="d-flex justify-content-center mt-3">
+            <button
+              className="btn btn-secondary me-2"
+              disabled={currentPage === 1}
+              onClick={() => setCurrentPage((p) => p - 1)}
+            >
+              Prev
+            </button>
+            <span className="align-self-center">
+              Page {currentPage} of {totalPages}
+            </span>
+            <button
+              className="btn btn-secondary ms-2"
+              disabled={currentPage === totalPages}
+              onClick={() => setCurrentPage((p) => p + 1)}
+            >
+              Next
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* Popup Modal */}
+      {showModal && (
+        <div className="modal show d-block">
+          <div className="modal-dialog">
+            <div className="modal-content p-3">
+              <h5>Enter Passcode</h5>
+              <input
+                type="password"
+                className="form-control my-2"
+                value={passcode}
+                onChange={(e) => setPasscode(e.target.value)}
+              />
+
+              {action === "Rejected" && (
+                <>
+                  <h6>Reason for Rejection</h6>
+                  <textarea
+                    className="form-control my-2"
+                    value={rejectReason}
+                    onChange={(e) => setRejectReason(e.target.value)}
+                  />
+                </>
+              )}
+
+              {message && <p className="text-danger">{message}</p>}
+
+              <div className="d-flex justify-content-end">
+                <button
+                  className="btn btn-secondary me-2"
+                  onClick={() => setShowModal(false)}
+                >
+                  Cancel
+                </button>
+                <button className="btn btn-primary" onClick={confirmAction}>
+                  Confirm
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+----------------updated approval code
 
 
 import React, { useState, useEffect } from "react";
@@ -4321,6 +4594,7 @@ export default function ManagePayroll() {
     </div>
   );
 }
+
 
 
 
