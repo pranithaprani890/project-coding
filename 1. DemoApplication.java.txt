@@ -1,4 +1,257 @@
+updated approval code
 
+
+import React, { useState, useEffect } from "react";
+import axios from "axios";
+import BackToDashboard from "../../common/components/BackToDashboard";
+
+const BASE_URL = "http://localhost:8080/api";
+
+export default function ApprovePayroll() {
+  const [batches, setBatches] = useState([]);
+  const [selected, setSelected] = useState([]);
+  const [remarks, setRemarks] = useState({});
+  const [showModal, setShowModal] = useState(false);
+  const [actionType, setActionType] = useState(null);
+  const [rejectReason, setRejectReason] = useState("");
+  const [message, setMessage] = useState("");
+
+  // ✅ Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const rowsPerPage = 6;
+
+  useEffect(() => {
+    loadBatches();
+  }, []);
+
+  const loadBatches = async () => {
+    try {
+      const res = await axios.get(`${BASE_URL}/payroll/batch`);
+      const submitted = res.data.filter((b) => b.status === "Submitted");
+      setBatches(submitted);
+    } catch (err) {
+      console.error(err);
+      setMessage("Failed to load payroll batches.");
+    }
+  };
+
+  const toggleSelect = (id) => {
+    setSelected((prev) =>
+      prev.includes(id) ? prev.filter((sid) => sid !== id) : [...prev, id]
+    );
+  };
+
+  const confirmAction = async () => {
+    try {
+      await Promise.all(
+        selected.map((id) =>
+          axios.put(`${BASE_URL}/approval/batch/${id}`, {
+            status: actionType,
+            remarks: actionType === "Rejected" ? rejectReason : remarks[id] || "",
+            approvedBy: "Approver User",
+          })
+        )
+      );
+
+      setMessage(`Batches ${actionType}!`);
+      setShowModal(false);
+      setSelected([]);
+      setRejectReason("");
+      loadBatches();
+    } catch (err) {
+      console.error(err);
+      setMessage("Failed to update batch status.");
+    }
+  };
+
+  const downloadBatch = (batch) => {
+    const text = [
+      `Payroll Batch — ${batch.id}`,
+      `Status: ${batch.status}`,
+      `Payments: ${batch.payments.length}`,
+      `Total: ${getTotal(batch)} ${batch.instruction.paymentCurrency}`,
+    ].join("\n");
+
+    const blob = new Blob([text], { type: "text/plain" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `Batch_${batch.id}.txt`;
+    link.click();
+  };
+
+  const getTotal = (batch) =>
+    batch.payments.reduce((sum, p) => sum + p.amount, 0);
+
+  // ✅ Pagination logic
+  const totalPages = Math.ceil(batches.length / rowsPerPage);
+  const startIndex = (currentPage - 1) * rowsPerPage;
+  const currentRows = batches.slice(startIndex, startIndex + rowsPerPage);
+
+  return (
+    <div className="p-6">
+      <BackToDashboard />
+      <h2 className="text-2xl font-bold mb-4">Approve Payroll</h2>
+
+      {message && <p className="mb-3 text-blue-600">{message}</p>}
+
+      <table className="w-full border border-gray-300 rounded">
+        <thead>
+          <tr className="bg-gray-100">
+            <th className="p-2">Select</th>
+            <th className="p-2">Batch ID</th>
+            <th className="p-2">Payments</th>
+            <th className="p-2">Total</th>
+            <th className="p-2">Currency</th>
+            <th className="p-2">Remarks</th>
+            <th className="p-2">Download</th>
+          </tr>
+        </thead>
+        <tbody>
+          {currentRows.length > 0 ? (
+            currentRows.map((b) => (
+              <tr key={b.id} className="border-t">
+                <td className="p-2 text-center">
+                  <input
+                    type="checkbox"
+                    checked={selected.includes(b.id)}
+                    onChange={() => toggleSelect(b.id)}
+                  />
+                </td>
+                <td className="p-2">{b.id}</td>
+                <td className="p-2">{b.payments.length}</td>
+                <td className="p-2">{getTotal(b)}</td>
+                <td className="p-2">{b.instruction.paymentCurrency}</td>
+                <td className="p-2">
+                  <input
+                    type="text"
+                    placeholder="Enter remarks"
+                    value={remarks[b.id] || ""}
+                    onChange={(e) =>
+                      setRemarks({ ...remarks, [b.id]: e.target.value })
+                    }
+                    className="border p-1 w-full"
+                  />
+                </td>
+                <td className="p-2">
+                  <button
+                    onClick={() => downloadBatch(b)}
+                    className="text-blue-600 underline"
+                  >
+                    Download
+                  </button>
+                </td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td colSpan="7" className="p-4 text-center text-gray-500">
+                No payrolls to approve.
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+
+      {/* ✅ Pagination Controls */}
+      {batches.length > rowsPerPage && (
+        <div className="flex justify-between items-center mt-4">
+          <button
+            onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
+            disabled={currentPage === 1}
+            className="px-3 py-1 border rounded bg-gray-200 disabled:opacity-50"
+          >
+            Prev
+          </button>
+          <span>
+            Page {currentPage} of {totalPages}
+          </span>
+          <button
+            onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
+            disabled={currentPage === totalPages}
+            className="px-3 py-1 border rounded bg-gray-200 disabled:opacity-50"
+          >
+            Next
+          </button>
+        </div>
+      )}
+
+      {batches.length > 0 && (
+        <div className="mt-4 flex gap-3">
+          <button
+            onClick={() => {
+              setActionType("Approved");
+              setShowModal(true);
+            }}
+            className="bg-green-600 text-white px-4 py-2 rounded"
+            disabled={selected.length === 0}
+          >
+            Approve
+          </button>
+          <button
+            onClick={() => {
+              setActionType("Rejected");
+              setShowModal(true);
+            }}
+            className="bg-red-600 text-white px-4 py-2 rounded"
+            disabled={selected.length === 0}
+          >
+            Reject
+          </button>
+        </div>
+      )}
+
+      {/* ✅ Modal */}
+      {showModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center">
+          <div className="bg-white p-6 rounded-lg shadow-md w-96">
+            <h3 className="text-xl font-bold mb-4">{actionType} Batches</h3>
+
+            {actionType === "Rejected" && (
+              <textarea
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                placeholder="Enter rejection reason"
+                className="border p-2 w-full mb-3"
+              />
+            )}
+
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowModal(false)}
+                className="px-4 py-2 bg-gray-300 rounded"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmAction}
+                className={`px-4 py-2 rounded text-white ${
+                  actionType === "Approved" ? "bg-green-600" : "bg-red-600"
+                }`}
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+----------------------------------------------
 package paymentinitiation.approvepayroll.controller;
 
 import paymentinitiation.approvepayroll.model.ApprovalLog;
@@ -4021,6 +4274,7 @@ export default function ManagePayroll() {
     </div>
   );
 }
+
 
 
 
