@@ -1,3 +1,413 @@
+Only change: swap out payrollStore with API calls.
+
+import React, { useState, useEffect } from "react";
+import axios from "axios";
+
+const MANAGE_BASE_URL = "http://localhost:8080/api/manage-payroll";
+const APPROVAL_BASE_URL = "http://localhost:8080/api/approval";
+
+export default function ApprovePayroll() {
+  const [batches, setBatches] = useState([]);
+  const [selected, setSelected] = useState([]);
+  const [remarks, setRemarks] = useState({});
+  const [showModal, setShowModal] = useState(false);
+  const [passcode, setPasscode] = useState("");
+  const [rejectReason, setRejectReason] = useState("");
+  const [message, setMessage] = useState("");
+  const [action, setAction] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+
+  const SECRET = "1234";
+  const rowsPerPage = 10;
+
+  // Fetch submitted batches
+  useEffect(() => {
+    refresh();
+  }, []);
+
+  const refresh = async () => {
+    try {
+      const res = await axios.get(`${MANAGE_BASE_URL}/batch`);
+      setBatches(res.data.filter((b) => b.status === "Submitted"));
+    } catch (err) {
+      console.error("Error fetching batches:", err);
+    }
+  };
+
+  const getTotal = (batch) =>
+    batch.payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+
+  const toggleSelect = (id) => {
+    setSelected((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
+  const openModal = (act) => {
+    if (selected.length === 0) {
+      setMessage("Please select at least one batch.");
+      return;
+    }
+    setAction(act);
+    setPasscode("");
+    setRejectReason("");
+    setMessage("");
+    setShowModal(true);
+  };
+
+  const confirmAction = async () => {
+    if (passcode !== SECRET) {
+      setMessage("Wrong passcode!");
+      return;
+    }
+    if (action === "Rejected" && !rejectReason.trim()) {
+      setMessage("Please enter a rejection reason.");
+      return;
+    }
+
+    try {
+      for (const id of selected) {
+        await axios.post(`${APPROVAL_BASE_URL}/${id}`, {
+          action,
+          remarks: action === "Rejected" ? rejectReason : remarks[id] || "",
+          approvedBy: "Approver User",
+        });
+      }
+      setMessage(`Batches ${action}!`);
+      setSelected([]);
+      refresh();
+      setShowModal(false);
+    } catch (err) {
+      console.error("Error approving/rejecting:", err);
+      setMessage("Error processing approval.");
+    }
+  };
+
+  const downloadBatch = (batch) => {
+    const text = [
+      `Payroll Batch — ${batch.id}`,
+      `Status: ${batch.status}`,
+      `Payments: ${batch.payments.length}`,
+      `Total: ${getTotal(batch)} ${batch.instruction.paymentCurrency}`,
+    ];
+    const blob = new Blob([text.join("\n")], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `Batch_${batch.id}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Pagination
+  const indexOfLastRow = currentPage * rowsPerPage;
+  const indexOfFirstRow = indexOfLastRow - rowsPerPage;
+  const currentRows = batches.slice(indexOfFirstRow, indexOfLastRow);
+  const totalPages = Math.ceil(batches.length / rowsPerPage);
+
+  return (
+    <div className="container my-4">
+      <div className="d-flex justify-content-between align-items-center mb-3">
+        <h2 className="mb-0">Approve Payroll</h2>
+        <button
+          className="btn btn-primary"
+          onClick={() => (window.location.href = "/dashboard")}
+        >
+          ← Back to Dashboard
+        </button>
+      </div>
+
+      {message && <div className="alert alert-info">{message}</div>}
+
+      {batches.length === 0 ? (
+        <p>No payrolls waiting for approval.</p>
+      ) : (
+        <>
+          <div className="mb-2 d-flex justify-content-end">
+            <button
+              className="btn btn-success me-2"
+              onClick={() => openModal("Approved")}
+            >
+              Approve Selected
+            </button>
+            <button
+              className="btn btn-danger"
+              onClick={() => openModal("Rejected")}
+            >
+              Reject Selected
+            </button>
+          </div>
+
+          <div style={{ maxHeight: "400px", overflowY: "auto" }}>
+            <table className="table table-bordered text-center mb-0">
+              <thead
+                style={{
+                  position: "sticky",
+                  top: 0,
+                  backgroundColor: "#f8f9fa",
+                  zIndex: 2,
+                }}
+              >
+                <tr>
+                  <th>Select</th>
+                  <th>ID</th>
+                  <th>Created</th>
+                  <th>Payments</th>
+                  <th>Total Amount</th>
+                  <th>Remarks</th>
+                  <th>Download</th>
+                </tr>
+              </thead>
+              <tbody>
+                {currentRows.map((b) => (
+                  <tr
+                    key={b.id}
+                    className={selected.includes(b.id) ? "table-active" : ""}
+                  >
+                    <td>
+                      <input
+                        type="checkbox"
+                        checked={selected.includes(b.id)}
+                        onChange={() => toggleSelect(b.id)}
+                      />
+                    </td>
+                    <td>{b.id}</td>
+                    <td>
+                      {b.createdAt
+                        ? new Date(b.createdAt).toLocaleString()
+                        : "-"}
+                    </td>
+                    <td>{b.payments.length}</td>
+                    <td>
+                      {getTotal(b)} {b.instruction.paymentCurrency}
+                    </td>
+                    <td>
+                      <input
+                        type="text"
+                        value={remarks[b.id] || ""}
+                        onChange={(e) =>
+                          setRemarks({ ...remarks, [b.id]: e.target.value })
+                        }
+                        className="form-control form-control-sm"
+                        placeholder="Remarks"
+                      />
+                    </td>
+                    <td>
+                      <button
+                        className="btn btn-outline-primary btn-sm"
+                        onClick={() => downloadBatch(b)}
+                      >
+                        Download
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="d-flex justify-content-center mt-3">
+            <button
+              className="btn btn-secondary me-2"
+              disabled={currentPage === 1}
+              onClick={() => setCurrentPage((p) => p - 1)}
+            >
+              Prev
+            </button>
+            <span className="align-self-center">
+              Page {currentPage} of {totalPages}
+            </span>
+            <button
+              className="btn btn-secondary ms-2"
+              disabled={currentPage === totalPages}
+              onClick={() => setCurrentPage((p) => p + 1)}
+            >
+              Next
+            </button>
+          </div>
+        </>
+      )}
+
+      {showModal && (
+        <div className="modal show d-block">
+          <div className="modal-dialog">
+            <div className="modal-content p-3">
+              <h5>Enter Passcode</h5>
+              <input
+                type="password"
+                className="form-control my-2"
+                value={passcode}
+                onChange={(e) => setPasscode(e.target.value)}
+              />
+              {action === "Rejected" && (
+                <>
+                  <h6>Reason for Rejection</h6>
+                  <textarea
+                    className="form-control my-2"
+                    value={rejectReason}
+                    onChange={(e) => setRejectReason(e.target.value)}
+                  />
+                </>
+              )}
+              {message && <p className="text-danger">{message}</p>}
+              <div className="d-flex justify-content-end">
+                <button
+                  className="btn btn-secondary me-2"
+                  onClick={() => setShowModal(false)}
+                >
+                  Cancel
+                </button>
+                <button className="btn btn-primary" onClick={confirmAction}>
+                  Confirm
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+🔹 Backend (Approval Module)
+ApprovalLog.java
+package com.example.approval.model;
+
+import jakarta.persistence.*;
+import java.time.LocalDateTime;
+
+@Entity
+@Table(name = "approval_logs")
+public class ApprovalLog {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    private Long batchId;
+    private String action;       // Approved / Rejected
+    private String remarks;
+    private String approvedBy;
+    private LocalDateTime approvedAt;
+
+    // getters & setters
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
+
+    public Long getBatchId() { return batchId; }
+    public void setBatchId(Long batchId) { this.batchId = batchId; }
+
+    public String getAction() { return action; }
+    public void setAction(String action) { this.action = action; }
+
+    public String getRemarks() { return remarks; }
+    public void setRemarks(String remarks) { this.remarks = remarks; }
+
+    public String getApprovedBy() { return approvedBy; }
+    public void setApprovedBy(String approvedBy) { this.approvedBy = approvedBy; }
+
+    public LocalDateTime getApprovedAt() { return approvedAt; }
+    public void setApprovedAt(LocalDateTime approvedAt) { this.approvedAt = approvedAt; }
+}
+
+ApprovalLogRepository.java
+package com.example.approval.repo;
+
+import com.example.approval.model.ApprovalLog;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import java.util.List;
+
+public interface ApprovalLogRepository extends JpaRepository<ApprovalLog, Long> {
+    List<ApprovalLog> findByBatchId(Long batchId);
+}
+
+ApprovalService.java
+package com.example.approval.service;
+
+import com.example.approval.model.ApprovalLog;
+import com.example.approval.repo.ApprovalLogRepository;
+import com.example.payroll.model.PayrollBatch;
+import com.example.payroll.repository.PayrollBatchRepository;
+import org.springframework.stereotype.Service;
+
+import java.time.LocalDateTime;
+
+@Service
+public class ApprovalService {
+
+    private final PayrollBatchRepository payrollRepo;
+    private final ApprovalLogRepository logRepo;
+
+    public ApprovalService(PayrollBatchRepository payrollRepo, ApprovalLogRepository logRepo) {
+        this.payrollRepo = payrollRepo;
+        this.logRepo = logRepo;
+    }
+
+    public ApprovalLog approveOrReject(Long batchId, String action, String remarks, String approvedBy) {
+        PayrollBatch batch = payrollRepo.findById(batchId)
+                .orElseThrow(() -> new RuntimeException("Batch not found"));
+
+        batch.setStatus(action);
+        batch.setUpdatedAt(LocalDateTime.now().toString());
+        payrollRepo.save(batch);
+
+        ApprovalLog log = new ApprovalLog();
+        log.setBatchId(batchId);
+        log.setAction(action);
+        log.setRemarks(remarks);
+        log.setApprovedBy(approvedBy);
+        log.setApprovedAt(LocalDateTime.now());
+
+        return logRepo.save(log);
+    }
+}
+
+ApprovalController.java
+package com.example.approval.controller;
+
+import com.example.approval.model.ApprovalLog;
+import com.example.approval.service.ApprovalService;
+import com.example.approval.repo.ApprovalLogRepository;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+import java.util.Map;
+
+@RestController
+@RequestMapping("/api/approval")
+@CrossOrigin(origins = "http://localhost:3000")
+public class ApprovalController {
+
+    private final ApprovalService service;
+    private final ApprovalLogRepository logRepo;
+
+    public ApprovalController(ApprovalService service, ApprovalLogRepository logRepo) {
+        this.service = service;
+        this.logRepo = logRepo;
+    }
+
+    @PostMapping("/{batchId}")
+    public ApprovalLog approveOrReject(
+            @PathVariable Long batchId,
+            @RequestBody Map<String, String> payload
+    ) {
+        String action = payload.get("action");
+        String remarks = payload.getOrDefault("remarks", "");
+        String approvedBy = payload.getOrDefault("approvedBy", "System");
+
+        return service.approveOrReject(batchId, action, remarks, approvedBy);
+    }
+
+    @GetMapping("/{batchId}/logs")
+    public List<ApprovalLog> getLogs(@PathVariable Long batchId) {
+        return logRepo.findByBatchId(batchId);
+    }
+}
+
+
+--------------
+
 import React, { useState, useEffect } from "react";
 import axios from "axios";
 
@@ -5356,6 +5766,7 @@ spring.jpa.show-sql=true
 spring.jpa.properties.hibernate.format_sql=true
 spring.jpa.properties.hibernate.cache.use_query_cache=false
 spring.jpa.properties.hibernate.cache.use_second_level_cache=false
+
 
 
 
