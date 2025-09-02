@@ -1,3 +1,99 @@
+✅ Step 1: Update ApprovalService
+package com.example.approval.service;
+
+import com.example.approval.model.ApprovalLog;
+import com.example.approval.repo.ApprovalLogRepository;
+import com.example.payroll.model.PayrollBatch;
+import com.example.payroll.repository.PayrollBatchRepository;
+import org.springframework.stereotype.Service;
+
+import java.time.LocalDateTime;
+import java.util.List;
+
+@Service
+public class ApprovalService {
+
+    private final PayrollBatchRepository payrollRepo;
+    private final ApprovalLogRepository logRepo;
+
+    public ApprovalService(PayrollBatchRepository payrollRepo, ApprovalLogRepository logRepo) {
+        this.payrollRepo = payrollRepo;
+        this.logRepo = logRepo;
+    }
+
+    public List<PayrollBatch> getAllBatches() {
+        return payrollRepo.findAll();
+    }
+
+    public ApprovalLog approveOrReject(Long batchId, String action, String remarks, String approvedBy) {
+        ApprovalLog log = new ApprovalLog();
+        log.setBatchId(batchId);
+        log.setAction(action);
+        log.setRemarks(remarks);
+        log.setApprovedBy(approvedBy);
+        log.setApprovedAt(LocalDateTime.now());
+        return logRepo.save(log);
+    }
+}
+
+✅ Step 2: Add endpoint in ApprovalController
+@GetMapping("/batches")
+public List<PayrollBatch> getAllBatches() {
+    return service.getAllBatches();
+}
+
+✅ Final ApprovalController
+package com.example.approval.controller;
+
+import com.example.approval.model.ApprovalLog;
+import com.example.approval.service.ApprovalService;
+import com.example.approval.repo.ApprovalLogRepository;
+import com.example.payroll.model.PayrollBatch;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+import java.util.Map;
+
+@RestController
+@RequestMapping("/api/approval")
+@CrossOrigin(origins = "http://localhost:3000")
+public class ApprovalController {
+
+    private final ApprovalService service;
+    private final ApprovalLogRepository logRepo;
+
+    public ApprovalController(ApprovalService service, ApprovalLogRepository logRepo) {
+        this.service = service;
+        this.logRepo = logRepo;
+    }
+
+    @PostMapping("/{batchId}")
+    public ApprovalLog approveOrReject(
+            @PathVariable Long batchId,
+            @RequestBody Map<String, String> payload
+    ) {
+        String action = payload.get("action");
+        String remarks = payload.getOrDefault("remarks", "");
+        String approvedBy = payload.getOrDefault("approvedBy", "System");
+
+        return service.approveOrReject(batchId, action, remarks, approvedBy);
+    }
+
+    @GetMapping("/{batchId}/logs")
+    public List<ApprovalLog> getLogs(@PathVariable Long batchId) {
+        return logRepo.findByBatchId(batchId);
+    }
+
+    // 🔹 New endpoint to get all batches
+    @GetMapping("/batches")
+    public List<PayrollBatch> getAllBatches() {
+        return service.getAllBatches();
+    }
+}
+
+
+
+---------------------
 Only change: swap out payrollStore with API calls.
 
 import React, { useState, useEffect } from "react";
@@ -5766,6 +5862,7 @@ spring.jpa.show-sql=true
 spring.jpa.properties.hibernate.format_sql=true
 spring.jpa.properties.hibernate.cache.use_query_cache=false
 spring.jpa.properties.hibernate.cache.use_second_level_cache=false
+
 
 
 
