@@ -1287,3 +1287,305 @@ export default function ApprovalPage() {
     </div>
   );
 }
+=------------------------
+package com.example.approval.model;
+
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "approval_logs")
+public class ApprovalLog {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    private Long batchId;
+    private String action;       // Approved / Rejected
+    private String remarks;
+    private String approvedBy;
+    private String approvedAt;
+
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
+
+    public Long getBatchId() { return batchId; }
+    public void setBatchId(Long batchId) { this.batchId = batchId; }
+
+    public String getAction() { return action; }
+    public void setAction(String action) { this.action = action; }
+
+    public String getRemarks() { return remarks; }
+    public void setRemarks(String remarks) { this.remarks = remarks; }
+
+    public String getApprovedBy() { return approvedBy; }
+    public void setApprovedBy(String approvedBy) { this.approvedBy = approvedBy; }
+
+    public String getApprovedAt() { return approvedAt; }
+    public void setApprovedAt(String approvedAt) { this.approvedAt = approvedAt; }
+}
+approval/repo/ApprovalLogRepository.java
+java
+Copy code
+package com.example.approval.repo;
+
+import com.example.approval.model.ApprovalLog;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+
+@Repository
+public interface ApprovalLogRepository extends JpaRepository<ApprovalLog, Long> {
+    List<ApprovalLog> findByBatchId(Long batchId);
+}
+approval/service/ApprovalService.java
+java
+Copy code
+package com.example.approval.service;
+
+import com.example.approval.model.ApprovalLog;
+import com.example.approval.repo.ApprovalLogRepository;
+import com.example.payroll.model.PayrollBatch;
+import com.example.payroll.repository.PayrollBatchRepository;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+
+@Service
+public class ApprovalService {
+
+    private final ApprovalLogRepository approvalRepo;
+    private final PayrollBatchRepository batchRepo;
+
+    public ApprovalService(ApprovalLogRepository approvalRepo, PayrollBatchRepository batchRepo) {
+        this.approvalRepo = approvalRepo;
+        this.batchRepo = batchRepo;
+    }
+
+    public PayrollBatch approveOrReject(Long batchId, String action, String remarks, String approvedBy, String approvedAt) {
+        PayrollBatch batch = batchRepo.findById(batchId)
+                .orElseThrow(() -> new RuntimeException("Batch not found"));
+
+        // Update batch status
+        batch.setStatus(action);
+        batch.setUpdatedAt(approvedAt);
+        batchRepo.save(batch);
+
+        // Log approval action
+        ApprovalLog log = new ApprovalLog();
+        log.setBatchId(batchId);
+        log.setAction(action);
+        log.setRemarks(remarks);
+        log.setApprovedBy(approvedBy);
+        log.setApprovedAt(approvedAt);
+        approvalRepo.save(log);
+
+        return batch;
+    }
+
+    public List<ApprovalLog> getLogsForBatch(Long batchId) {
+        return approvalRepo.findByBatchId(batchId);
+    }
+}
+approval/controller/ApprovalController.java
+java
+Copy code
+package com.example.approval.controller;
+
+import com.example.approval.model.ApprovalLog;
+import com.example.approval.service.ApprovalService;
+import com.example.payroll.model.PayrollBatch;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+import java.util.Map;
+
+@RestController
+@RequestMapping("/api/approval")
+@CrossOrigin(origins = "http://localhost:3000")
+public class ApprovalController {
+
+    private final ApprovalService service;
+
+    public ApprovalController(ApprovalService service) {
+        this.service = service;
+    }
+
+    @PostMapping("/batch/{id}/action")
+    public PayrollBatch approveOrReject(
+            @PathVariable Long id,
+            @RequestBody Map<String, String> body) {
+
+        String action = body.get("action"); // Approved / Rejected
+        String remarks = body.getOrDefault("remarks", "");
+        String approvedBy = body.getOrDefault("approvedBy", "Approver");
+        String approvedAt = body.getOrDefault("approvedAt", String.valueOf(System.currentTimeMillis()));
+
+        return service.approveOrReject(id, action, remarks, approvedBy, approvedAt);
+    }
+
+    @GetMapping("/batch/{id}/logs")
+    public List<ApprovalLog> getLogs(@PathVariable Long id) {
+        return service.getLogsForBatch(id);
+    }
+}
+
+
+
+
+
+
+
+
+
+      import React, { useState, useEffect } from "react";
+import axios from "axios";
+
+export default function ApprovePayroll() {
+  // State variables
+  const [batches, setBatches] = useState([]);
+  const [selected, setSelected] = useState([]);
+  const [remarks, setRemarks] = useState({});
+  const [showModal, setShowModal] = useState(false);
+  const [action, setAction] = useState("");
+  const [currentBatchId, setCurrentBatchId] = useState(null);
+
+  const BASE_URL = "http://localhost:8080/api";
+
+  // Fetch only submitted batches
+  const fetchBatches = async () => {
+    try {
+      const res = await axios.get(`${BASE_URL}/manage-payroll/batch`);
+      setBatches(res.data.filter((b) => b.status === "Submitted"));
+    } catch (err) {
+      console.error("Error fetching batches", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchBatches();
+  }, []);
+
+  // Handle checkbox selection
+  const handleSelect = (id) => {
+    setSelected((prev) =>
+      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
+    );
+  };
+
+  // Handle remarks input
+  const handleRemarkChange = (id, value) => {
+    setRemarks((prev) => ({ ...prev, [id]: value }));
+  };
+
+  // Open modal before confirm
+  const openModal = (batchId, act) => {
+    setCurrentBatchId(batchId);
+    setAction(act);
+    setShowModal(true);
+  };
+
+  // Confirm approve/reject
+  const confirmAction = async () => {
+    try {
+      await axios.post(`${BASE_URL}/approval/batch/${currentBatchId}/action`, {
+        action,
+        remarks: remarks[currentBatchId] || "",
+        approvedBy: "Approver User",
+        approvedAt: new Date().toISOString(),
+      });
+      setShowModal(false);
+      fetchBatches();
+    } catch (err) {
+      console.error("Error updating status", err);
+    }
+  };
+
+  return (
+    <div className="p-6">
+      <h2 className="text-xl font-bold mb-4">Approve Payroll</h2>
+
+      <table className="w-full border border-gray-300 rounded-lg">
+        <thead className="bg-gray-200">
+          <tr>
+            <th className="p-2">Select</th>
+            <th className="p-2">Batch ID</th>
+            <th className="p-2">Batch Name</th>
+            <th className="p-2">Status</th>
+            <th className="p-2">Remarks</th>
+            <th className="p-2">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {batches.slice(0, 6).map((batch) => (
+            <tr key={batch.id} className="border-t">
+              <td className="p-2 text-center">
+                <input
+                  type="checkbox"
+                  checked={selected.includes(batch.id)}
+                  onChange={() => handleSelect(batch.id)}
+                />
+              </td>
+              <td className="p-2">{batch.id}</td>
+              <td className="p-2">{batch.name}</td>
+              <td className="p-2">{batch.status}</td>
+              <td className="p-2">
+                <input
+                  type="text"
+                  value={remarks[batch.id] || ""}
+                  onChange={(e) =>
+                    handleRemarkChange(batch.id, e.target.value)
+                  }
+                  className="border rounded p-1 w-full"
+                  placeholder="Enter remarks"
+                />
+              </td>
+              <td className="p-2">
+                <button
+                  className="bg-green-500 text-white px-3 py-1 rounded mr-2"
+                  onClick={() => openModal(batch.id, "Approved")}
+                >
+                  Approve
+                </button>
+                <button
+                  className="bg-red-500 text-white px-3 py-1 rounded"
+                  onClick={() => openModal(batch.id, "Rejected")}
+                >
+                  Reject
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {/* Confirm Modal */}
+      {showModal && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-40">
+          <div className="bg-white p-6 rounded-lg shadow-lg w-96">
+            <h3 className="text-lg font-semibold mb-4">
+              Confirm {action} for Batch {currentBatchId}?
+            </h3>
+            <div className="flex justify-end">
+              <button
+                className="px-4 py-2 mr-2 rounded bg-gray-300"
+                onClick={() => setShowModal(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className={`px-4 py-2 rounded ${
+                  action === "Approved" ? "bg-green-500 text-white" : "bg-red-500 text-white"
+                }`}
+                onClick={confirmAction}
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
