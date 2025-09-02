@@ -1589,3 +1589,285 @@ export default function ApprovePayroll() {
   );
 }
 
+
+----------------
+import React, { useState, useEffect } from "react";
+import axios from "axios";
+import { useNavigate } from "react-router-dom";
+
+const BASE_MANAGE_URL = "http://localhost:8080/api/manage-payroll";
+const BASE_APPROVAL_URL = "http://localhost:8080/api/approval";
+
+export default function ApprovePayroll() {
+  const [batches, setBatches] = useState([]);
+  const [selected, setSelected] = useState([]);
+  const [remarks, setRemarks] = useState({});
+  const [showModal, setShowModal] = useState(false);
+  const [passcode, setPasscode] = useState("");
+  const [rejectReason, setRejectReason] = useState("");
+  const [message, setMessage] = useState("");
+  const [action, setAction] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+
+  const navigate = useNavigate();
+  const SECRET = "1234";
+  const rowsPerPage = 10;
+
+  // Load only Submitted batches
+  const refresh = async () => {
+    try {
+      const res = await axios.get(`${BASE_MANAGE_URL}/batch`);
+      setBatches(res.data.filter((b) => b.status === "Submitted"));
+    } catch (err) {
+      console.error("Error fetching batches:", err);
+    }
+  };
+
+  useEffect(() => {
+    refresh();
+  }, []);
+
+  const getTotal = (batch) =>
+    batch.payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+
+  const toggleSelect = (id) => {
+    setSelected((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
+  const openModal = (act) => {
+    if (selected.length === 0) {
+      setMessage("Please select at least one batch.");
+      return;
+    }
+    setAction(act);
+    setPasscode("");
+    setRejectReason("");
+    setMessage("");
+    setShowModal(true);
+  };
+
+  const confirmAction = async () => {
+    if (passcode !== SECRET) {
+      setMessage("Wrong passcode!");
+      return;
+    }
+
+    if (action === "Rejected" && !rejectReason.trim()) {
+      setMessage("Please enter a rejection reason.");
+      return;
+    }
+
+    try {
+      for (const id of selected) {
+        await axios.post(`${BASE_APPROVAL_URL}/batch/${id}/action`, {
+          action,
+          remarks: action === "Rejected" ? rejectReason : remarks[id] || "",
+          approvedBy: "Approver User",
+          approvedAt: new Date().toISOString(),
+        });
+      }
+      setMessage(`Batches ${action}!`);
+      setShowModal(false);
+      setSelected([]);
+      refresh();
+    } catch (err) {
+      console.error("Error approving/rejecting batches:", err);
+      setMessage("Error processing action.");
+    }
+  };
+
+  const downloadBatch = (batch) => {
+    const text = [
+      `Payroll Batch — ${batch.id}`,
+      `Status: ${batch.status}`,
+      `Payments: ${batch.payments.length}`,
+      `Total: ${getTotal(batch)} ${batch.instruction.paymentCurrency}`,
+    ];
+    const blob = new Blob([text.join("\n")], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `Batch_${batch.id}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Pagination logic
+  const indexOfLastRow = currentPage * rowsPerPage;
+  const indexOfFirstRow = indexOfLastRow - rowsPerPage;
+  const currentRows = batches.slice(indexOfFirstRow, indexOfLastRow);
+  const totalPages = Math.ceil(batches.length / rowsPerPage);
+
+  return (
+    <div className="container my-4">
+      {/* Heading + Back button */}
+      <div className="d-flex justify-content-between align-items-center mb-3">
+        <h2 className="mb-0">Approve Payroll</h2>
+        <button
+          className="btn btn-primary"
+          onClick={() => navigate("/dashboard")}
+        >
+          ← Back to Dashboard
+        </button>
+      </div>
+
+      {message && <div className="alert alert-info">{message}</div>}
+
+      {batches.length === 0 ? (
+        <p>No payrolls waiting for approval.</p>
+      ) : (
+        <>
+          {/* Approve/Reject buttons */}
+          <div className="mb-2 d-flex justify-content-end">
+            <button
+              className="btn btn-success me-2"
+              onClick={() => openModal("Approved")}
+            >
+              Approve Selected
+            </button>
+            <button
+              className="btn btn-danger"
+              onClick={() => openModal("Rejected")}
+            >
+              Reject Selected
+            </button>
+          </div>
+
+          {/* Scrollable Table */}
+          <div style={{ maxHeight: "400px", overflowY: "auto" }}>
+            <table className="table table-bordered text-center mb-0">
+              <thead
+                style={{
+                  position: "sticky",
+                  top: 0,
+                  backgroundColor: "#f8f9fa",
+                  zIndex: 2,
+                }}
+              >
+                <tr>
+                  <th>Select</th>
+                  <th>ID</th>
+                  <th>Created</th>
+                  <th>Payments</th>
+                  <th>Total Amount</th>
+                  <th>Remarks</th>
+                  <th>Download</th>
+                </tr>
+              </thead>
+              <tbody>
+                {currentRows.map((b) => (
+                  <tr
+                    key={b.id}
+                    className={selected.includes(b.id) ? "table-active" : ""}
+                  >
+                    <td>
+                      <input
+                        type="checkbox"
+                        checked={selected.includes(b.id)}
+                        onChange={() => toggleSelect(b.id)}
+                      />
+                    </td>
+                    <td>{b.id}</td>
+                    <td>
+                      {b.createdAt
+                        ? new Date(b.createdAt).toLocaleString()
+                        : "-"}
+                    </td>
+                    <td>{b.payments.length}</td>
+                    <td>
+                      {getTotal(b)} {b.instruction.paymentCurrency}
+                    </td>
+                    <td>
+                      <input
+                        type="text"
+                        value={remarks[b.id] || ""}
+                        onChange={(e) =>
+                          setRemarks({ ...remarks, [b.id]: e.target.value })
+                        }
+                        className="form-control form-control-sm"
+                        placeholder="Remarks"
+                      />
+                    </td>
+                    <td>
+                      <button
+                        className="btn btn-outline-primary btn-sm"
+                        onClick={() => downloadBatch(b)}
+                      >
+                        Download
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination */}
+          <div className="d-flex justify-content-center mt-3">
+            <button
+              className="btn btn-secondary me-2"
+              disabled={currentPage === 1}
+              onClick={() => setCurrentPage((p) => p - 1)}
+            >
+              Prev
+            </button>
+            <span className="align-self-center">
+              Page {currentPage} of {totalPages}
+            </span>
+            <button
+              className="btn btn-secondary ms-2"
+              disabled={currentPage === totalPages}
+              onClick={() => setCurrentPage((p) => p + 1)}
+            >
+              Next
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* Modal */}
+      {showModal && (
+        <div className="modal show d-block">
+          <div className="modal-dialog">
+            <div className="modal-content p-3">
+              <h5>Enter Passcode</h5>
+              <input
+                type="password"
+                className="form-control my-2"
+                value={passcode}
+                onChange={(e) => setPasscode(e.target.value)}
+              />
+
+              {action === "Rejected" && (
+                <>
+                  <h6>Reason for Rejection</h6>
+                  <textarea
+                    className="form-control my-2"
+                    value={rejectReason}
+                    onChange={(e) => setRejectReason(e.target.value)}
+                  />
+                </>
+              )}
+
+              {message && <p className="text-danger">{message}</p>}
+
+              <div className="d-flex justify-content-end">
+                <button
+                  className="btn btn-secondary me-2"
+                  onClick={() => setShowModal(false)}
+                >
+                  Cancel
+                </button>
+                <button className="btn btn-primary" onClick={confirmAction}>
+                  Confirm
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
