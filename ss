@@ -1,3 +1,104 @@
+
+
+
+
+
+
+
+
+
+
+@Transactional(readOnly = true)
+public BigDecimal getAvailableBalance(String accountNumber) {
+    return accRepo.findByAccountNumber(accountNumber)
+            .map(AccountBalanceEntity::getBalance)
+            .orElse(DEFAULT_OPENING); // fallback if not found
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+@Transactional
+public ApprovalLog approveOrReject(Long batchId, String action, String remarks, String approvedBy) {
+    PayrollBatch batch = payrollRepo.findById(batchId)
+            .orElseThrow(() -> new RuntimeException("Batch not found"));
+
+    String normalized = (action == null) ? "" : action.trim().toLowerCase();
+
+    boolean isApprove = normalized.equals("approved") || normalized.equals("approve") || normalized.equals("accept");
+
+    if (isApprove) {
+        // ✅ Step 1: calculate batch total
+        BigDecimal batchTotal = BigDecimal.ZERO;
+        if (batch.getPayments() != null) {
+            for (var p : batch.getPayments()) {
+                try {
+                    if (p.getAmount() != null && !p.getAmount().isBlank()) {
+                        batchTotal = batchTotal.add(new BigDecimal(p.getAmount().trim()));
+                    }
+                } catch (Exception e) {
+                    log.warn("Invalid amount '{}' in batch {}", p.getAmount(), batchId);
+                }
+            }
+        }
+
+        // ✅ Step 2: check available balance
+        String debitAcc = batch.getInstruction().getDebitAccount();
+        BigDecimal availableBalance = accountBalanceService.getAvailableBalance(debitAcc);
+
+        if (availableBalance.compareTo(batchTotal) < 0) {
+            // Insufficient funds → auto-reject
+            normalized = "rejected";
+            remarks = (remarks == null ? "" : remarks) + " [Auto-rejected: Insufficient balance]";
+            isApprove = false;
+            log.warn("Batch {} rejected: required={}, available={}", batchId, batchTotal, availableBalance);
+        }
+    }
+
+    // ✅ Update batch
+    batch.setStatus(normalized);
+    batch.setUpdatedAt(LocalDateTime.now().toString());
+    payrollRepo.save(batch);
+
+    // ✅ Save approval log
+    ApprovalLog logEntry = new ApprovalLog();
+    logEntry.setBatchId(batchId);
+    logEntry.setAction(normalized);
+    logEntry.setRemarks(remarks);
+    logEntry.setApprovedBy(approvedBy);
+    logEntry.setApprovedAt(LocalDateTime.now());
+    ApprovalLog savedlog = logRepo.save(logEntry);
+
+    // ✅ If approved, continue with effects
+    if (isApprove) {
+        transactionService.generateFromBatch(batchId);
+        accountBalanceService.applyBatchApprovalImpact(batchId); // deducts
+    }
+
+    return savedlog;
+}
+
+
+
+
+
+
+
+
+
+
+--------------------
 @Transactional
 public ApprovalLog approveOrReject(Long batchId, String action, String remarks, String approvedBy) {
     PayrollBatch batch = payrollRepo.findById(batchId)
