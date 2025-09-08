@@ -1,4 +1,112 @@
+package com.scb.PaymentInitiation.approvepayroll.service;
 
+import com.scb.PaymentInitiation.approvepayroll.model.ApprovalLog;
+import com.scb.PaymentInitiation.approvepayroll.repository.ApprovalLogRepository;
+import com.scb.PaymentInitiation.createpayroll.model.PayrollBatch;
+import com.scb.PaymentInitiation.createpayroll.repository.PayrollBatchRepository;
+import com.scb.PaymentInitiation.transactions.service.TransactionService;
+import com.scb.PaymentInitiation.accountbalance.service.AccountBalanceService;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
+
+import java.time.LocalDateTime;
+
+@Service
+public class ApprovalService {
+
+    private static final Logger log = LoggerFactory.getLogger(ApprovalService.class);
+
+    private final PayrollBatchRepository payrollRepo;
+    private final ApprovalLogRepository logRepo;
+    private final TransactionService transactionService;
+    private final AccountBalanceService accountBalanceService;
+
+    public ApprovalService(PayrollBatchRepository payrollRepo,
+                           ApprovalLogRepository logRepo,
+                           TransactionService transactionService,
+                           AccountBalanceService accountBalanceService) {
+        this.payrollRepo = payrollRepo;
+        this.logRepo = logRepo;
+        this.transactionService = transactionService;
+        this.accountBalanceService = accountBalanceService;
+    }
+
+    /**
+     * Approve or reject a batch. On approval:
+     *  - generate transactions
+     *  - apply the account balance impact (decrement DB balance)
+     *
+     * This method is transactional so that the batch update + generated transactions
+     * + balance decrement are committed or rolled back together.
+     */
+    @Transactional
+    public ApprovalLog approveOrReject(Long batchId, String action, String remarks, String approvedBy) {
+        PayrollBatch batch = payrollRepo.findById(batchId)
+                .orElseThrow(() -> new RuntimeException("Batch not found"));
+
+        // Normalize and set status
+        String normalized = action == null ? "" : action.trim();
+        batch.setStatus(normalized);
+        batch.setUpdatedAt(LocalDateTime.now().toString());
+        payrollRepo.save(batch);
+        log.info("Batch {} status set to {}", batchId, normalized);
+
+        // Save approval log
+        ApprovalLog logEntry = new ApprovalLog();
+        logEntry.setBatchId(batchId);
+        logEntry.setAction(normalized);
+        logEntry.setRemarks(remarks);
+        logEntry.setApprovedBy(approvedBy);
+        logEntry.setApprovedAt(LocalDateTime.now());
+
+        ApprovalLog savedlog = logRepo.save(logEntry);
+        log.info("ApprovalLog saved for batch {} by {}", batchId, approvedBy);
+
+        // Interpret approval
+        String lower = normalized.toLowerCase();
+        boolean isApprove = lower.equals("approved") || lower.equals("approve") || lower.equals("accept");
+
+        if (isApprove) {
+            log.info("Processing approval effects for batch {}", batchId);
+            // 1) generate transactions (existing behavior)
+            transactionService.generateFromBatch(batchId);
+
+            // 2) apply balance impact (decrement account balance row for debit account)
+            try {
+                accountBalanceService.applyBatchApprovalImpact(batchId);
+                log.info("Account balance impact applied for batch {}", batchId);
+            } catch (Exception ex) {
+                log.error("Error applying balance impact for batch {}: {}", batchId, ex.getMessage(), ex);
+                // rethrow so the transaction will roll back and the approval won't be partially applied
+                throw ex;
+            }
+        } else {
+            log.info("Batch {} not approved (action='{}'), skipping transaction generation & balance update", batchId, normalized);
+        }
+
+        return savedlog;
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+-------------------------
 git restore approval/Approval.jsx
 git restore approval/Approvepayroll.jsx
 git restore approvallatest/Approvepayroll.jsx
@@ -5883,6 +5991,7 @@ spring.jpa.show-sql=true
 spring.jpa.properties.hibernate.format_sql=true
 spring.jpa.properties.hibernate.cache.use_query_cache=false
 spring.jpa.properties.hibernate.cache.use_second_level_cache=false
+
 
 
 
